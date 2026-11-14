@@ -7,7 +7,7 @@
     "start": "electron .",
     "dist": "electron-builder --win"
   },
-  "author": "",
+  "author": "MiniDisc Manager",
   "license": "GPL-2.0-or-later",
   "dependencies": {
     "ffmpeg-static": "^5.3.0",
@@ -24,28 +24,49 @@
   "build": {
     "appId": "local.minidisc.manager",
     "productName": "MiniDisc Manager",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
     "files": [
       "main.js",
       "preload.js",
       "lib/**",
       "renderer/**",
+      "build/icon.png",
       "node_modules/**"
     ],
-    "asarUnpack": [
-      "node_modules/ffmpeg-static/**",
-      "node_modules/usb/**"
-    ],
+    "asar": false,
+    "npmRebuild": false,
     "extraResources": [
       {
         "from": "bin",
         "to": "bin",
         "filter": [
-          "**/*"
+          "**/*",
+          "!.gitkeep"
         ]
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MiniDisc Manager",
+      "artifactName": "MiniDisc-Manager-Setup-${version}.${ext}"
     }
   }
 }

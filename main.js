@@ -521,6 +521,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1180, height: 780, minWidth: 900, minHeight: 600,
     backgroundColor: '#14161c', title: 'MiniDisc Manager', autoHideMenuBar: true,
+    icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
