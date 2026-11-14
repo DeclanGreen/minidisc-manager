@@ -28,7 +28,7 @@ It's built on [netmd-js](https://github.com/cybercase/netmd-js), the open-source
    ```
    npm install
    ```
-4. **Optional: add LP2/LP4 support.** SP works straight away because the player encodes SP itself. LP2/LP4 need the PC to encode ATRAC3, which the free **atracdenc** encoder does. Get a Windows build of `atracdenc.exe` (https://github.com/dcherednik/atracdenc) and put it at `bin\atracdenc.exe` in this folder. The LP2/LP4 buttons switch on when it's found.
+4. **Optional: add LP2/LP4 support.** SP works straight away because the player encodes SP itself. LP2/LP4 need the PC to encode ATRAC3, which the free **atracdenc** encoder does. Download the official Windows build (`atracdenc-win-x86_0.2.3.zip` from https://github.com/dcherednik/atracdenc/releases) and copy `x86\atracdenc.exe` to `bin\atracdenc.exe` in this folder. The app runs it as `-e atrac3` for LP2 (132 kbps) and `-e atrac3 --bitrate 64` for LP4 (66 kbps joint stereo). The LP2/LP4 buttons switch on when it's found.
 
 ## Run
 
