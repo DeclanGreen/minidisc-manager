@@ -49,9 +49,21 @@ function requireDevice() {
 }
 
 // ---------- device
+// node-usb gives every control transfer a 1 s timeout unless told otherwise, and netmd-js never passes one.
+// Players can take longer than that to answer while they're busy (secure-session setup before recording, writing
+// the TOC after an erase), and a timed-out command leaves the player stuck mid-reply ("transfer was cancelled").
+// Browsers' WebUSB has no timeout at all, which is what netmd-js was written against, so allow plenty of time.
+const CONTROL_TIMEOUT_MS = 30000;
+{
+  const { UsbDevice } = require('usb/index.js');
+  const cin = UsbDevice.prototype.controlTransferIn, cout = UsbDevice.prototype.controlTransferOut;
+  UsbDevice.prototype.controlTransferIn = function (setup, length, timeout = CONTROL_TIMEOUT_MS) { return cin.call(this, setup, length, timeout); };
+  UsbDevice.prototype.controlTransferOut = function (setup, data, timeout = CONTROL_TIMEOUT_MS) { return cout.call(this, setup, data, timeout); };
+}
+const isUsbStall = (e) => /transfer was cancelled|timed? ?out|LIBUSB_ERROR/i.test(String(e && e.message));
+
 const webusb = new WebUSB({
   allowedDevices: netmd.DevicesIds.map(({ vendorId, deviceId }) => ({ vendorId, productId: deviceId })),
-  deviceTimeout: 1000000,
 });
 
 async function connect() {
@@ -505,6 +517,14 @@ handle('upload', (items, mode) => exclusive(async () => {
         log(`Failed "${item.title}": ${err.message}`);
         send('upload-progress', { id: item.id, stage: 'error', error: err.message });
         if (!iface) break; // device gone
+        if (isUsbStall(err)) {
+          // The player stopped answering mid-command; every later track would fail the same way.
+          log('The player stopped responding. Unplug it, wait a few seconds, plug it back in, then press Send again.');
+          try { await iface.netMd.finalize(); } catch {}
+          iface = null;
+          send('device-lost');
+          break;
+        }
       } finally {
         if (ripped) fs.rmSync(path.dirname(ripped), { recursive: true, force: true });
       }

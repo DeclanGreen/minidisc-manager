@@ -7,6 +7,7 @@ MiniDisc Manager: an Electron desktop app for Sony NetMD players (the user's pla
 - `main.js`: Electron main process. Handles NetMD over USB (netmd-js + node-usb WebUSB), audio conversion (ffmpeg-static, plus optional `bin/atracdenc.exe` for LP2/LP4), album art and lyrics lookups, and IPC.
 - `lib/youtube.js`: official-video search and ranking. `lib/cd.js` + `lib/cdrip.cs`: audio CD reading (the C# helper is compiled on first use with the Windows .NET Framework `csc.exe`) and MusicBrainz disc ID lookup.
 - `preload.js`: exposes `window.md` to the renderer. `renderer/`: UI (CSP blocks inline styles, so set styles via the CSSOM).
+- node-usb defaults control transfers to a 1 s timeout (netmd-js passes none), which broke uploads with "transfer was cancelled". `main.js` patches `UsbDevice.prototype.controlTransferIn/Out` to default to 30 s. Keep that patch when upgrading `usb`.
 - Device access is serialised through `exclusive()`, because NetMD handles one command at a time. Only one process can hold the player, so close the app before running standalone USB tests.
 
 ## Version control
