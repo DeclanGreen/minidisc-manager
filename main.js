@@ -1,7 +1,7 @@
 // MiniDisc Manager — Electron main process.
 // Owns the USB connection to the NetMD player (via netmd-js + node-usb) and
 // all audio conversion (ffmpeg for decoding, atracdenc for LP2/LP4 encoding).
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, session } = require('electron');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
@@ -343,6 +343,70 @@ async function findLyrics({ artist = '', title = '', seconds = 0, force = false,
   return res;
 }
 
+// ---------- YouTube video search (public results page, no API key) + Spotify album links
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+const linkCache = new Map(); // in-memory for the session
+
+async function youtubeSearch(artist, title) {
+  const query = `${artist} ${title} official video`.trim();
+  if (linkCache.has('yt:' + query)) return linkCache.get('yt:' + query);
+  const r = await fetch('https://www.youtube.com/results?hl=en&search_query=' + encodeURIComponent(query), {
+    headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-GB,en;q=0.9', Cookie: 'SOCS=CAI; CONSENT=YES+1' },
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!r.ok) throw new Error(`YouTube replied ${r.status}`);
+  const m = (await r.text()).match(/var ytInitialData = (\{.*?\});<\/script>/s);
+  if (!m) throw new Error('Couldn\'t read YouTube\'s results (the page format may have changed).');
+  const found = [];
+  const walk = (o) => {
+    if (!o || typeof o !== 'object') return;
+    if (o.videoRenderer && o.videoRenderer.videoId) found.push(o.videoRenderer);
+    for (const k in o) walk(o[k]);
+  };
+  walk(JSON.parse(m[1]));
+
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const a = norm(artist).replace(/\s+/g, ''), t = norm(title);
+  const videos = found.slice(0, 12).map((v, i) => {
+    const vt = v.title?.runs?.map((x) => x.text).join('') || '';
+    const ch = v.ownerText?.runs?.[0]?.text || '';
+    const n = norm(vt), c = norm(ch).replace(/\s+/g, '');
+    let score = -i * 0.3; // keep YouTube's order as the tiebreak
+    if (/vevo/.test(c) || (a && c.includes(a))) score += 3; // artist's own channel
+    if (/ topic$/i.test(ch)) score -= 1; // auto-generated audio-only uploads
+    if (/official|\bvideo\b/.test(n)) score += 2;
+    if (t && n.includes(t)) score += 2;
+    if (/lyric|cover|karaoke|reaction|live at|\blive\b|remix|tutorial|8d audio|slowed/.test(n)) score -= 2.5;
+    return { id: v.videoId, title: vt, channel: ch, length: v.lengthText?.simpleText || '', score };
+  }).sort((x, y) => y.score - x.score);
+  linkCache.set('yt:' + query, videos);
+  return videos;
+}
+
+async function spotifyAlbum({ mbid, artist, album }) {
+  const searchUrl = 'https://open.spotify.com/search/' + encodeURIComponent(`${artist || ''} ${album || ''}`.trim());
+  const ck = `sp:${mbid}|${artist}|${album}`;
+  if (linkCache.has(ck)) return linkCache.get(ck);
+  let res = { searchUrl };
+  if (mbid) {
+    try {
+      const j = await mbFetch(`https://musicbrainz.org/ws/2/release?release-group=${mbid}&inc=url-rels&fmt=json&limit=50`);
+      const url = (j.releases || []).flatMap((rel) => (rel.relations || []).map((x) => x.url && x.url.resource))
+        .find((u) => /^https:\/\/open\.spotify\.com\/album\/[A-Za-z0-9]+/.test(u || ''));
+      if (url) {
+        const id = url.match(/album\/([A-Za-z0-9]+)/)[1];
+        res = { searchUrl, id, url: `https://open.spotify.com/album/${id}`, uri: `spotify:album:${id}` };
+        try {
+          const o = await getJSON('https://open.spotify.com/oembed?url=' + encodeURIComponent(res.url));
+          if (o) { res.title = o.title; res.thumb = o.thumbnail_url; }
+        } catch {}
+      }
+    } catch (e) { log(`Spotify lookup: ${e.message}`); }
+  }
+  linkCache.set(ck, res);
+  return res;
+}
+
 // ---------- IPC
 const handle = (ch, fn) => ipcMain.handle(ch, async (_e, ...args) => {
   try { return { ok: true, value: await fn(...args) }; }
@@ -397,7 +461,12 @@ handle('clear-art', (title) => {
 handle('get-lyrics', (q) => findLyrics(q));
 handle('get-settings', () => loadSettings());
 handle('set-settings', (patch) => saveSettings(patch));
-handle('open-external', (url) => { if (/^https:\/\/musicbrainz\.org\//.test(url)) shell.openExternal(url); });
+handle('youtube-search', (artist, title) => youtubeSearch(artist, title));
+handle('spotify-album', (q) => spotifyAlbum(q));
+// Only open links to the music services this app uses.
+handle('open-external', (url) => {
+  if (/^https:\/\/(musicbrainz\.org|www\.youtube\.com|open\.spotify\.com)\//.test(url) || /^spotify:album:[A-Za-z0-9]+$/.test(url)) return shell.openExternal(url);
+});
 handle('cancel-upload', () => { cancelRequested = true; log('Cancelling after the current track…'); });
 
 // items: [{id, path, title}], mode: 'SP' | 'LP2' | 'LP4'
@@ -446,5 +515,12 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // YouTube embeds refuse to play without a referrer (error 153), and file:// pages send none.
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://www.youtube-nocookie.com/*', 'https://www.youtube.com/*'] },
+    (d, cb) => { d.requestHeaders.Referer = d.requestHeaders.Referer || 'https://minidisc-manager.app/'; cb({ requestHeaders: d.requestHeaders }); },
+  );
+  createWindow();
+});
 app.on('window-all-closed', async () => { await disconnect(); app.quit(); });

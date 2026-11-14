@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https://i.ytimg.com https://*.spotifycdn.com https://i.scdn.co; frame-src https://www.youtube-nocookie.com https://open.spotify.com">
   <title>MiniDisc Manager</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -78,8 +78,43 @@
     <!-- Transfer panel -->
     <section class="panel queue-panel">
       <div class="tabs" id="tabs" role="tablist">
-        <button role="tab" data-tab="transfer" class="on" aria-selected="true">Transfer to disc</button>
+        <button role="tab" data-tab="transfer" class="on" aria-selected="true">Transfer</button>
         <button role="tab" data-tab="lyrics" aria-selected="false">Lyrics <span class="live-dot" id="liveDot" hidden></span></button>
+        <button role="tab" data-tab="video" aria-selected="false">Video</button>
+        <button role="tab" data-tab="spotify" aria-selected="false">Spotify</button>
+      </div>
+
+      <div class="tab-pane" id="paneVideo" role="tabpanel" hidden>
+        <div class="ly-head">
+          <div class="ly-meta">
+            <div class="ly-title" id="vidTitle">No track selected</div>
+            <div class="muted small" id="vidSub"></div>
+          </div>
+        </div>
+        <div class="vid-frame" id="vidFrame"><div class="vid-msg" id="vidMsg">Click a track on the disc to find its official video.</div></div>
+        <div class="eyebrow">Other matches</div>
+        <ol class="vid-list" id="vidList"></ol>
+        <div class="ly-foot">
+          <span class="muted small" id="vidSource">Video search: YouTube</span>
+          <button type="button" class="ghost small-btn" id="vidOpen" disabled>Open on YouTube</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="paneSpotify" role="tabpanel" hidden>
+        <div class="sp-card">
+          <img id="spArt" class="sp-art" alt="" hidden><div class="sp-art ph" id="spArtPh">♫</div>
+          <div class="ly-meta">
+            <div class="eyebrow">Album</div>
+            <div class="sp-title" id="spTitle">No disc</div>
+            <div class="muted small" id="spSub"></div>
+            <div class="sp-buttons">
+              <button type="button" class="primary" id="spApp" disabled>Open in Spotify app</button>
+              <button type="button" class="ghost" id="spWeb" disabled>Open in browser</button>
+            </div>
+          </div>
+        </div>
+        <div class="sp-embed" id="spEmbed"></div>
+        <div class="muted small" id="spNote"></div>
       </div>
 
       <div class="tab-pane" id="paneLyrics" role="tabpanel" hidden>

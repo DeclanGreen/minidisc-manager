@@ -379,8 +379,7 @@ window.md.on('device-attached', () => { if (!S.connected) $('connectBtn').click(
 function setTab(tab) {
   S.tab = tab;
   document.querySelectorAll('#tabs button').forEach((b) => { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', b.dataset.tab === tab); });
-  $('paneTransfer').hidden = tab !== 'transfer';
-  $('paneLyrics').hidden = tab !== 'lyrics';
+  for (const t of ['transfer', 'lyrics', 'video', 'spotify']) $('pane' + t[0].toUpperCase() + t.slice(1)).hidden = tab !== t;
   syncLyrics();
 }
 $('tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); };
@@ -404,6 +403,8 @@ function lyricsTarget() {
 
 function syncLyrics() {
   $('liveDot').hidden = S.playingTrack == null;
+  syncVideo();
+  syncSpotify();
   if (S.tab !== 'lyrics') return;
   drawLyricsArt();
   const tg = lyricsTarget();
@@ -517,6 +518,97 @@ setInterval(() => {
   const el = body.querySelector(`p[data-i="${Math.max(cur, 0)}"]`);
   if (el && performance.now() > lyScrollPause) body.scrollTop = el.offsetTop - body.clientHeight / 2 + el.offsetHeight / 2;
 }, 200);
+
+// ---------- video tab (official YouTube video, played in-app)
+S.vid = { key: null, target: null, loading: false, results: [], current: null, error: null };
+function syncVideo() {
+  if (S.tab !== 'video') return;
+  const tg = lyricsTarget();
+  const key = tg ? `${tg.artist}|${tg.title}`.toLowerCase() : null;
+  if (key === S.vid.key) return;
+  S.vid = { key, target: tg, loading: !!tg, results: [], current: null, error: null };
+  drawVideo(true);
+  if (!tg) return;
+  window.md.youtubeSearch(tg.artist, tg.title)
+    .then((r) => { if (S.vid.key !== key) return; S.vid.results = r; S.vid.current = r[0]?.id || null; })
+    .catch((e) => { if (S.vid.key === key) S.vid.error = e.message; })
+    .finally(() => { if (S.vid.key !== key) return; S.vid.loading = false; drawVideo(true); });
+}
+
+function drawVideo(reloadFrame, autoplay = false) {
+  const { target: tg, loading, error, results, current } = S.vid;
+  $('vidTitle').textContent = tg ? tg.title : 'No track selected';
+  $('vidSub').textContent = tg ? [tg.artist, `Track ${tg.index + 1}`].filter(Boolean).join(' · ') : '';
+  if (reloadFrame) {
+    const msg = !tg ? (S.disc ? 'Click a track on the disc, or press play on the player, to find its official video.' : 'Connect your player and insert a disc.')
+      : loading ? 'Searching YouTube…'
+      : error ? `Couldn't search YouTube.<br><span class="small">${esc(error)}</span>`
+      : 'No videos found.';
+    $('vidFrame').innerHTML = current
+      ? `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(current)}?rel=0&playsinline=1${autoplay ? '&autoplay=1' : ''}"
+           allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="YouTube video"></iframe>`
+      : `<div class="vid-msg">${msg}</div>`;
+  }
+  $('vidList').innerHTML = results.slice(0, 8).map((v) => `
+    <li data-id="${esc(v.id)}" class="${v.id === current ? 'on' : ''}" title="${esc(v.title)}">
+      <img src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="">
+      <div class="v-title">${esc(v.title)}</div>
+      <div class="v-sub">${esc(v.channel)}${v.length ? ' · ' + esc(v.length) : ''}</div>
+    </li>`).join('');
+  $('vidOpen').disabled = !current;
+}
+$('vidList').onclick = (e) => {
+  const li = e.target.closest('li'); if (!li) return;
+  S.vid.current = li.dataset.id;
+  // Playing a video: pause the MiniDisc so the two don't play over each other.
+  if (S.connected && S.playingTrack != null && S.pos.playing) window.md.transport('pause').catch(() => {});
+  drawVideo(true, true);
+};
+$('vidOpen').onclick = () => S.vid.current && window.md.openExternal(`https://www.youtube.com/watch?v=${S.vid.current}`);
+
+// ---------- spotify tab (album link-out + Spotify's embedded player)
+S.sp = { key: null, data: null, loading: false };
+function syncSpotify() {
+  if (S.tab !== 'spotify') return;
+  const d = S.disc;
+  const parts = (d?.title || '').split(/\s+[-–—\/]\s+/);
+  const artist = parts.length > 1 ? parts[0] : '';
+  const album = parts.length > 1 ? parts.slice(1).join(' - ') : d?.title || '';
+  // Wait for the art lookup: it gives us the MusicBrainz album id, which links to Spotify.
+  const mbid = d && S.art.title === d.title && !S.art.loading ? S.art.source?.mbid || null : undefined;
+  const key = d && album && mbid !== undefined ? `${d.title}|${mbid}` : d ? 'wait' : null;
+  if (key === S.sp.key) return;
+  S.sp = { key, data: null, loading: !!d && !!album };
+  drawSpotify({ artist, album });
+  if (!key || key === 'wait') return;
+  window.md.spotifyAlbum({ mbid, artist, album })
+    .then((r) => { if (S.sp.key === key) S.sp.data = r; })
+    .catch((e) => { if (S.sp.key === key) S.sp.error = e.message; })
+    .finally(() => { if (S.sp.key !== key) return; S.sp.loading = false; drawSpotify({ artist, album }); });
+}
+
+function drawSpotify({ artist, album }) {
+  const { data, loading, error } = S.sp;
+  const art = data?.thumb || (S.disc && S.art.title === S.disc.title ? S.art.url : null);
+  $('spArt').hidden = !art; if (art && $('spArt').src !== art) $('spArt').src = art;
+  $('spArtPh').hidden = !!art;
+  $('spTitle').textContent = data?.title || album || (S.connected ? 'No disc' : 'No player connected');
+  $('spSub').textContent = artist || (S.art.source?.artist ?? '');
+  $('spApp').disabled = !data?.uri;
+  $('spWeb').disabled = !data;
+  $('spWeb').textContent = data?.url ? 'Open in browser' : 'Search on Spotify';
+  $('spEmbed').innerHTML = data?.id
+    ? `<iframe src="https://open.spotify.com/embed/album/${encodeURIComponent(data.id)}?utm_source=generator&theme=0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" title="Spotify album"></iframe>`
+    : '';
+  $('spNote').textContent = !S.disc ? 'Insert a disc to find its album on Spotify.'
+    : loading ? 'Looking up the album on Spotify…'
+    : error ? `Spotify lookup failed: ${error}`
+    : data && !data.id ? 'Couldn\'t find an exact album link, so the button opens a Spotify search instead.'
+    : data ? 'Album link via MusicBrainz. The player here plays previews; open the album in Spotify for full tracks.' : '';
+}
+$('spApp').onclick = () => S.sp.data?.uri && window.md.openExternal(S.sp.data.uri)
+  .catch(() => toast('Couldn\'t open the Spotify app. Is it installed? Try "Open in browser".', true));
+$('spWeb').onclick = () => S.sp.data && window.md.openExternal(S.sp.data.url || S.sp.data.searchUrl);
 
 // ---------- poll the player: disc insert/eject, playing track and position
 async function poll() {
