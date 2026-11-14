@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>MiniDisc Manager</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+        <rect x="3" y="3" width="34" height="34" rx="5" class="logo-shell"/>
+        <rect x="8" y="3" width="16" height="9" rx="1" class="logo-shutter"/>
+        <circle cx="20" cy="24" r="8" class="logo-disc"/>
+        <circle cx="20" cy="24" r="2.2" class="logo-hub"/>
+      </svg>
+      <div>
+        <h1>MiniDisc Manager</h1>
+        <div class="device" id="device"><span class="dot"></span><span id="deviceText">No player connected</span></div>
+      </div>
+    </div>
+    <div class="transport" id="transport" aria-label="Player controls">
+      <button data-t="prev" title="Previous track">⏮</button>
+      <button data-t="play" title="Play">▶</button>
+      <button data-t="pause" title="Pause">⏸</button>
+      <button data-t="stop" title="Stop">⏹</button>
+      <button data-t="next" title="Next track">⏭</button>
+    </div>
+    <div class="actions">
+      <button id="refreshBtn" class="ghost" disabled>Refresh</button>
+      <button id="connectBtn" class="primary">Connect player</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Disc panel -->
+    <section class="panel disc-panel">
+      <div class="disc-head">
+        <div class="disc-art" id="discArt"><div class="disc-label" id="discArtLabel">MD</div></div>
+        <div class="disc-meta">
+          <div class="eyebrow">Disc</div>
+          <h2 id="discTitle" class="editable" title="Double-click to rename">—</h2>
+          <div class="muted" id="discSub">Connect your NetMD player and insert a disc.</div>
+          <div class="capacity">
+            <div class="cap-bar"><div class="cap-used" id="capUsed"></div><div class="cap-pending" id="capPending"></div></div>
+            <div class="cap-legend">
+              <span><i class="sw used"></i>Used <b id="capUsedTxt">0:00</b></span>
+              <span><i class="sw pending"></i>Queued <b id="capPendingTxt">0:00</b></span>
+              <span><i class="sw free"></i>Free <b id="capFreeTxt">0:00</b></span>
+              <span class="muted" id="capFreeModes"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <span class="muted" id="selInfo">Click to select · Shift/Ctrl for many · drag to reorder · double-click to rename</span>
+        <div class="spacer"></div>
+        <button id="deleteBtn" class="ghost" disabled>Delete selected</button>
+        <button id="eraseBtn" class="danger" disabled>Erase disc…</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="tracks">
+          <thead><tr><th class="c-num">#</th><th>Title</th><th class="c-mode">Mode</th><th class="c-time">Length</th></tr></thead>
+          <tbody id="trackBody"></tbody>
+        </table>
+        <div class="empty" id="trackEmpty">No disc loaded</div>
+      </div>
+    </section>
+
+    <!-- Transfer panel -->
+    <section class="panel queue-panel">
+      <div class="eyebrow">Transfer to disc</div>
+      <div class="drop" id="drop" tabindex="0" role="button">
+        <div class="drop-icon">♪</div>
+        <div><b>Drop MP3s here</b> or click to browse</div>
+        <div class="muted small">MP3, FLAC, WAV, M4A, OGG… converted automatically</div>
+      </div>
+
+      <div class="mode-row">
+        <div class="seg" id="modeSeg" role="radiogroup" aria-label="Recording mode">
+          <button data-mode="SP" class="on" role="radio">SP<small>292 kbps</small></button>
+          <button data-mode="LP2" role="radio">LP2<small>132 kbps · 2×</small></button>
+          <button data-mode="LP4" role="radio">LP4<small>66 kbps · 4×</small></button>
+        </div>
+      </div>
+      <div class="hint" id="modeHint"></div>
+
+      <ol class="queue" id="queue"></ol>
+      <div class="queue-foot">
+        <span class="muted" id="queueInfo">Queue is empty</span>
+        <div class="spacer"></div>
+        <button id="clearBtn" class="ghost" disabled>Clear</button>
+        <button id="cancelBtn" class="ghost hidden">Cancel</button>
+        <button id="sendBtn" class="primary" disabled>Send to disc</button>
+      </div>
+    </section>
+  </main>
+
+  <details class="log" id="logBox">
+    <summary>Activity log</summary>
+    <pre id="log"></pre>
+  </details>
+
+  <dialog id="eraseDlg">
+    <form method="dialog">
+      <h3>Erase the whole disc?</h3>
+      <p>Every track and title on <b id="eraseName"></b> will be permanently removed. This can't be undone.</p>
+      <label>Type <code>ERASE</code> to confirm<input id="eraseInput" autocomplete="off"></label>
+      <menu><button value="cancel" class="ghost">Cancel</button><button value="ok" id="eraseOk" class="danger" disabled>Erase disc</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="renameDlg">
+    <form method="dialog">
+      <h3 id="renameHead">Rename</h3>
+      <input id="renameInput" maxlength="120" autocomplete="off">
+      <p class="muted small">MiniDisc titles use plain letters, numbers and punctuation. Accents are simplified.</p>
+      <menu><button value="cancel" class="ghost">Cancel</button><button value="ok" class="primary">Save</button></menu>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

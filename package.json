@@ -1,0 +1,50 @@
+{
+  "name": "minidisc-manager",
+  "version": "0.1.0",
+  "description": "Manage NetMD MiniDisc players: read discs, rename, reorder, erase, and transfer MP3s in SP/LP2/LP4",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "author": "",
+  "license": "GPL-2.0-or-later",
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "music-metadata": "^12.5.0",
+    "netmd-js": "^4.4.1",
+    "usb": "^3.3.0"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "productName": "MiniDisc Manager",
+  "private": true,
+  "build": {
+    "appId": "local.minidisc.manager",
+    "productName": "MiniDisc Manager",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "node_modules/**"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/usb/**"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
