@@ -27,6 +27,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "lib/**",
       "renderer/**",
       "node_modules/**"
     ],

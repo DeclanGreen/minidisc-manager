@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('md', {
   chooseArt: (title) => call('choose-art', title),
   clearArt: (title) => call('clear-art', title),
   getLyrics: (q) => call('get-lyrics', q),
-  youtubeSearch: (artist, title) => call('youtube-search', artist, title),
+  youtubeSearch: (artist, title, seconds) => call('youtube-search', artist, title, seconds),
   spotifyAlbum: (q) => call('spotify-album', q),
   getSettings: () => call('get-settings'),
   setSettings: (patch) => call('set-settings', patch),

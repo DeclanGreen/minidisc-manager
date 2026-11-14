@@ -344,44 +344,8 @@ async function findLyrics({ artist = '', title = '', seconds = 0, force = false,
 }
 
 // ---------- YouTube video search (public results page, no API key) + Spotify album links
-const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+const { youtubeSearch } = require('./lib/youtube');
 const linkCache = new Map(); // in-memory for the session
-
-async function youtubeSearch(artist, title) {
-  const query = `${artist} ${title} official video`.trim();
-  if (linkCache.has('yt:' + query)) return linkCache.get('yt:' + query);
-  const r = await fetch('https://www.youtube.com/results?hl=en&search_query=' + encodeURIComponent(query), {
-    headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-GB,en;q=0.9', Cookie: 'SOCS=CAI; CONSENT=YES+1' },
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!r.ok) throw new Error(`YouTube replied ${r.status}`);
-  const m = (await r.text()).match(/var ytInitialData = (\{.*?\});<\/script>/s);
-  if (!m) throw new Error('Couldn\'t read YouTube\'s results (the page format may have changed).');
-  const found = [];
-  const walk = (o) => {
-    if (!o || typeof o !== 'object') return;
-    if (o.videoRenderer && o.videoRenderer.videoId) found.push(o.videoRenderer);
-    for (const k in o) walk(o[k]);
-  };
-  walk(JSON.parse(m[1]));
-
-  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const a = norm(artist).replace(/\s+/g, ''), t = norm(title);
-  const videos = found.slice(0, 12).map((v, i) => {
-    const vt = v.title?.runs?.map((x) => x.text).join('') || '';
-    const ch = v.ownerText?.runs?.[0]?.text || '';
-    const n = norm(vt), c = norm(ch).replace(/\s+/g, '');
-    let score = -i * 0.3; // keep YouTube's order as the tiebreak
-    if (/vevo/.test(c) || (a && c.includes(a))) score += 3; // artist's own channel
-    if (/ topic$/i.test(ch)) score -= 1; // auto-generated audio-only uploads
-    if (/official|\bvideo\b/.test(n)) score += 2;
-    if (t && n.includes(t)) score += 2;
-    if (/lyric|cover|karaoke|reaction|live at|\blive\b|remix|tutorial|8d audio|slowed/.test(n)) score -= 2.5;
-    return { id: v.videoId, title: vt, channel: ch, length: v.lengthText?.simpleText || '', score };
-  }).sort((x, y) => y.score - x.score);
-  linkCache.set('yt:' + query, videos);
-  return videos;
-}
 
 async function spotifyAlbum({ mbid, artist, album }) {
   const searchUrl = 'https://open.spotify.com/search/' + encodeURIComponent(`${artist || ''} ${album || ''}`.trim());
@@ -461,7 +425,7 @@ handle('clear-art', (title) => {
 handle('get-lyrics', (q) => findLyrics(q));
 handle('get-settings', () => loadSettings());
 handle('set-settings', (patch) => saveSettings(patch));
-handle('youtube-search', (artist, title) => youtubeSearch(artist, title));
+handle('youtube-search', (artist, title, seconds) => youtubeSearch(artist, title, seconds));
 handle('spotify-album', (q) => spotifyAlbum(q));
 // Only open links to the music services this app uses.
 handle('open-external', (url) => {

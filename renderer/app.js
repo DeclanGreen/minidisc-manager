@@ -529,7 +529,7 @@ function syncVideo() {
   S.vid = { key, target: tg, loading: !!tg, results: [], current: null, error: null };
   drawVideo(true);
   if (!tg) return;
-  window.md.youtubeSearch(tg.artist, tg.title)
+  window.md.youtubeSearch(tg.artist, tg.title, tg.seconds)
     .then((r) => { if (S.vid.key !== key) return; S.vid.results = r; S.vid.current = r[0]?.id || null; })
     .catch((e) => { if (S.vid.key === key) S.vid.error = e.message; })
     .finally(() => { if (S.vid.key !== key) return; S.vid.loading = false; drawVideo(true); });
@@ -552,10 +552,18 @@ function drawVideo(reloadFrame, autoplay = false) {
   $('vidList').innerHTML = results.slice(0, 8).map((v) => `
     <li data-id="${esc(v.id)}" class="${v.id === current ? 'on' : ''}" title="${esc(v.title)}">
       <img src="https://i.ytimg.com/vi/${esc(v.id)}/mqdefault.jpg" alt="">
-      <div class="v-title">${esc(v.title)}</div>
+      <div class="v-title">${v.official ? '<span class="v-badge">Official</span>' : ''}${esc(v.title)}</div>
       <div class="v-sub">${esc(v.channel)}${v.length ? ' · ' + esc(v.length) : ''}</div>
     </li>`).join('');
   $('vidOpen').disabled = !current;
+  // Tell the user whether they're watching the official video or just the closest match.
+  const cur = results.find((v) => v.id === current);
+  const status = $('vidSource');
+  status.className = 'small ' + (cur?.official ? 'v-ok' : 'muted');
+  status.textContent = !cur ? 'Video search: YouTube'
+    : cur.official ? `✓ Official video · ${cur.channel}`
+    : cur.match ? (results.some((v) => v.official) ? `Not the official video · ${cur.channel}` : `No official video found — closest match · ${cur.channel}`)
+    : 'No good match found — try the other results';
 }
 $('vidList').onclick = (e) => {
   const li = e.target.closest('li'); if (!li) return;
