@@ -20,4 +20,5 @@ MiniDisc Manager: an Electron desktop app for Sony NetMD players (the user's pla
 ## Testing
 - No test suite. Check UI changes by launching Electron with a scratch script that requires `main.js`, injects mock state through `executeJavaScript`, and saves screenshots with `capturePage()`.
 - Ask before running anything that writes to the user's MiniDisc (uploads, renames, deletes, erase).
-- Not yet verified on real hardware: LP2/LP4 encoding, and reading a real CD (the PC has no CD drive).
+- LP2/LP4 verified on the real player with atracdenc 0.2.3 (Nov 2026).
+- Not yet verified on real hardware: reading a real CD (the PC has no CD drive).
