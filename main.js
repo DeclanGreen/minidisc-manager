@@ -1,7 +1,8 @@
 // MiniDisc Manager — Electron main process.
 // Owns the USB connection to the NetMD player (via netmd-js + node-usb) and
 // all audio conversion (ffmpeg for decoding, atracdenc for LP2/LP4 encoding).
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -156,14 +157,130 @@ function cleanTitle(t) {
 async function probe(file) {
   const mm = await import('music-metadata');
   let title = path.basename(file, path.extname(file));
-  let seconds = 0;
+  let seconds = 0, artist = '', album = '', art = null;
   try {
-    const meta = await mm.parseFile(file, { duration: true, skipCovers: true });
-    const { artist, title: t } = meta.common;
-    if (t) title = artist ? `${artist} - ${t}` : t;
+    const meta = await mm.parseFile(file, { duration: true });
+    const c = meta.common;
+    artist = c.albumartist || c.artist || '';
+    album = c.album || '';
+    if (c.title) title = c.artist ? `${c.artist} - ${c.title}` : c.title;
     seconds = meta.format.duration || 0;
+    const pic = c.picture && c.picture[0];
+    if (pic) art = thumb(Buffer.from(pic.data), 96);
   } catch {}
-  return { path: file, name: path.basename(file), title, seconds };
+  return { path: file, name: path.basename(file), title, seconds, artist, album, art };
+}
+
+// ---------- album art (MusicBrainz + Cover Art Archive, cached on disk)
+const ART_DIR = () => path.join(app.getPath('userData'), 'art');
+const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
+const UA = () => `MiniDiscManager/${app.getVersion()} (desktop app)`;
+let settings = null;
+let artIndex = null;
+
+function loadSettings() {
+  if (!settings) { try { settings = JSON.parse(fs.readFileSync(SETTINGS_FILE(), 'utf8')); } catch { settings = {}; } }
+  return { onlineArt: true, ...settings };
+}
+function saveSettings(patch) {
+  settings = { ...loadSettings(), ...patch };
+  fs.writeFileSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2));
+  return settings;
+}
+function index() {
+  if (!artIndex) { try { artIndex = JSON.parse(fs.readFileSync(path.join(ART_DIR(), 'index.json'), 'utf8')); } catch { artIndex = {}; } }
+  return artIndex;
+}
+function saveIndex() {
+  fs.mkdirSync(ART_DIR(), { recursive: true });
+  fs.writeFileSync(path.join(ART_DIR(), 'index.json'), JSON.stringify(artIndex, null, 1));
+}
+const artKey = (t) => t.trim().toLowerCase().replace(/\s+/g, ' ');
+const artFile = (key, ext) => path.join(ART_DIR(), crypto.createHash('sha1').update(key).digest('hex') + '.' + ext);
+
+// Resized data URL for the UI (keeps IPC payloads small).
+function thumb(buf, width) {
+  const img = nativeImage.createFromBuffer(buf);
+  if (img.isEmpty()) return null;
+  return (img.getSize().width > width ? img.resize({ width, quality: 'best' }) : img).toDataURL();
+}
+
+// MusicBrainz allows ~1 request/second; queue them.
+let mbChain = Promise.resolve();
+let mbLast = 0;
+function mbFetch(url) {
+  const run = mbChain.then(async () => {
+    const wait = mbLast + 1100 - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    for (let attempt = 0; ; attempt++) {
+      mbLast = Date.now();
+      const r = await fetch(url, { headers: { 'User-Agent': UA(), Accept: 'application/json' } });
+      if (r.ok) return r.json();
+      // 503 = rate limited: back off and retry a couple of times.
+      if (r.status !== 503 || attempt >= 3) throw new Error(`MusicBrainz replied ${r.status}`);
+      await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+    }
+  });
+  mbChain = run.catch(() => {});
+  return run;
+}
+
+// "Artist - Album" → { artist, album }
+function splitTitle(t) {
+  const parts = t.split(/\s+[-–—\/]\s+/);
+  return parts.length >= 2 ? { artist: parts[0], album: parts.slice(1).join(' - ') } : { artist: '', album: t };
+}
+// Loose term match (not an exact phrase): MD titles are often abbreviated or missing words.
+const terms = (s) => '(' + s.replace(/[+\-&|!(){}\[\]^"~*?:\\\/]/g, ' ').replace(/\s+/g, ' ').trim() + ')';
+
+async function searchArt(artist, album) {
+  if (!terms(album).slice(1, -1)) return null;
+  const q = `releasegroup:${terms(album)}` + (terms(artist).length > 2 ? ` AND artist:${terms(artist)}` : '');
+  const j = await mbFetch(`https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=5&query=${encodeURIComponent(q)}`);
+  const groups = (j['release-groups'] || []).filter((g) => g.score >= 70).slice(0, 4);
+  for (const g of groups) {
+    const r = await fetch(`https://coverartarchive.org/release-group/${g.id}/front-500`, { headers: { 'User-Agent': UA() } });
+    if (!r.ok) continue;
+    return {
+      buf: Buffer.from(await r.arrayBuffer()),
+      ext: (r.headers.get('content-type') || '').includes('png') ? 'png' : 'jpg',
+      source: { mbid: g.id, title: g.title, artist: (g['artist-credit'] || []).map((a) => a.name + (a.joinphrase || '')).join('') },
+    };
+  }
+  return null;
+}
+
+function storeArt(key, buf, ext, extra) {
+  const idx = index();
+  const old = idx[key] && idx[key].file;
+  fs.mkdirSync(ART_DIR(), { recursive: true });
+  const file = artFile(key, ext);
+  fs.writeFileSync(file, buf);
+  if (old && old !== file) fs.rmSync(old, { force: true });
+  idx[key] = { file, ...extra };
+  saveIndex();
+  return { url: thumb(buf, 400), ...extra };
+}
+
+// opts: { force, artist, album } — force searches again even if cached/declined.
+async function getArt(title, opts = {}) {
+  if (!title || !title.trim()) return null;
+  const key = artKey(title);
+  const hit = index()[key];
+  if (!opts.force && hit) {
+    if (hit.file && fs.existsSync(hit.file)) return { url: thumb(fs.readFileSync(hit.file), 400), source: hit.source, manual: !!hit.manual };
+    if (hit.cleared) return null;
+    if (hit.none && Date.now() - hit.ts < 7 * 864e5) return null;
+  }
+  if (!opts.force && !loadSettings().onlineArt) return null;
+  const q = opts.album !== undefined ? { artist: opts.artist || '', album: opts.album } : splitTitle(title);
+  const res = await searchArt(q.artist, q.album);
+  if (!res) {
+    if (!opts.force) { index()[key] = { none: true, ts: Date.now() }; saveIndex(); }
+    return null;
+  }
+  log(`Found cover art: ${res.source.artist} – ${res.source.title}`);
+  return storeArt(key, res.buf, res.ext, { source: res.source });
 }
 
 // ---------- IPC
@@ -201,6 +318,25 @@ handle('pick-files', async () => {
   return r.canceled ? [] : Promise.all(r.filePaths.map(probe));
 });
 handle('probe-files', (paths) => Promise.all(paths.map(probe)));
+
+handle('get-art', (title, opts) => getArt(title, opts));
+handle('choose-art', async (title) => {
+  const r = await dialog.showOpenDialog(win, { title: 'Choose cover image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }] });
+  if (r.canceled) return null;
+  const buf = fs.readFileSync(r.filePaths[0]);
+  if (nativeImage.createFromBuffer(buf).isEmpty()) throw new Error('That file isn\'t a readable JPG or PNG image.');
+  return storeArt(artKey(title), buf, /\.png$/i.test(r.filePaths[0]) ? 'png' : 'jpg', { manual: true });
+});
+handle('clear-art', (title) => {
+  const key = artKey(title);
+  const hit = index()[key];
+  if (hit && hit.file) fs.rmSync(hit.file, { force: true });
+  index()[key] = { cleared: true };
+  saveIndex();
+});
+handle('get-settings', () => loadSettings());
+handle('set-settings', (patch) => saveSettings(patch));
+handle('open-external', (url) => { if (/^https:\/\/musicbrainz\.org\//.test(url)) shell.openExternal(url); });
 handle('cancel-upload', () => { cancelRequested = true; log('Cancelling after the current track…'); });
 
 // items: [{id, path, title}], mode: 'SP' | 'LP2' | 'LP4'

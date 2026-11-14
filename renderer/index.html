@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
   <title>MiniDisc Manager</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -37,7 +37,12 @@
     <!-- Disc panel -->
     <section class="panel disc-panel">
       <div class="disc-head">
-        <div class="disc-art" id="discArt"><div class="disc-label" id="discArtLabel">MD</div></div>
+        <div class="disc-backdrop" id="discBackdrop"></div>
+        <button class="disc-art" id="discArt" title="Album art: click to change" disabled>
+          <img id="discImg" alt="" hidden>
+          <div class="disc-label" id="discArtLabel">MD</div>
+          <span class="art-spin" id="artSpin" hidden></span>
+        </button>
         <div class="disc-meta">
           <div class="eyebrow">Disc</div>
           <h2 id="discTitle" class="editable" title="Double-click to rename">—</h2>
@@ -119,6 +124,27 @@
       <input id="renameInput" maxlength="120" autocomplete="off">
       <p class="muted small">MiniDisc titles use plain letters, numbers and punctuation. Accents are simplified.</p>
       <menu><button value="cancel" class="ghost">Cancel</button><button value="ok" class="primary">Save</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="artDlg" class="art-dlg">
+    <form method="dialog">
+      <h3>Album art</h3>
+      <div class="art-body">
+        <div class="art-preview" id="artPreview"><img id="artPreviewImg" alt="" hidden><span id="artPreviewNone">No art</span></div>
+        <div class="art-form">
+          <label>Artist<input id="artArtist" autocomplete="off"></label>
+          <label>Album<input id="artAlbum" autocomplete="off"></label>
+          <div class="art-buttons">
+            <button type="button" id="artSearch" class="primary">Search online</button>
+            <button type="button" id="artChoose" class="ghost">Choose image…</button>
+            <button type="button" id="artRemove" class="ghost">Remove</button>
+          </div>
+          <div class="art-status muted small" id="artStatus"></div>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="artAuto"> Look up album art online automatically (MusicBrainz / Cover Art Archive)</label>
+      <menu><button value="close" class="ghost">Done</button></menu>
     </form>
   </dialog>
 

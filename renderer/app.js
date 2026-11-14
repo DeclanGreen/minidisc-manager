@@ -4,6 +4,7 @@ const S = {
   connected: false, name: '', disc: null, sel: new Set(), anchor: null,
   queue: [], mode: 'SP', busy: false, uploading: false, atracdenc: false,
   lastDiscPresent: null, playingTrack: null,
+  art: { title: null, url: null, source: null, loading: false },
 };
 const MODE_FACTOR = { SP: 1, LP2: 2, LP4: 4 };
 let nextId = 1;
@@ -44,6 +45,16 @@ function render(busyLabel) {
   const canEdit = S.connected && d && d.writable && !d.writeProtected && !S.busy && !S.uploading;
   $('discArt').classList.toggle('loaded', !!d);
   $('discArtLabel').textContent = d ? d.title || 'Untitled' : 'MD';
+  const artUrl = d && S.art.title === d.title ? S.art.url : null;
+  const img = $('discImg');
+  if (artUrl) { if (img.src !== artUrl) img.src = artUrl; img.hidden = false; } else { img.hidden = true; img.removeAttribute('src'); }
+  $('discArt').classList.toggle('has-art', !!artUrl);
+  $('discArt').disabled = !d;
+  $('artSpin').hidden = !(d && S.art.loading);
+  const bd = $('discBackdrop');
+  bd.classList.toggle('on', !!artUrl);
+  if (artUrl) bd.style.backgroundImage = `url("${artUrl}")`;
+  $('discArt').title = !d ? '' : artUrl && S.art.source ? `${S.art.source.artist} – ${S.art.source.title} (MusicBrainz) · click to change` : 'Album art: click to find or choose';
   $('discTitle').textContent = d ? d.title || 'Untitled disc' : S.connected ? 'No disc' : '—';
   $('discSub').textContent = !S.connected ? 'Connect your NetMD player and insert a disc.'
     : !d ? 'Insert a disc into the player.'
@@ -90,6 +101,7 @@ function renderQueue(d, queuedSec, left) {
   if (!focusId) {
     list.innerHTML = S.queue.map((q) => `
       <li data-id="${q.id}" class="${q.state}" title="${esc(q.error || q.path)}">
+        ${q.art ? `<img class="q-art" src="${q.art}" alt="">` : '<div class="q-art">♪</div>'}
         <div class="q-title" contenteditable="${q.state === 'queued' && !S.uploading}" spellcheck="false">${esc(q.title)}</div>
         <span class="q-time">${fmt(q.seconds)}</span>
         <button class="q-x" title="Remove" ${S.uploading ? 'disabled' : ''}>✕</button>
@@ -127,6 +139,22 @@ async function refresh() {
   const { status, disc } = await window.md.readDisc();
   S.disc = disc; S.lastDiscPresent = status.discPresent;
   S.sel = new Set([...S.sel].filter((i) => disc?.tracks.some((t) => t.index === i)));
+  if (disc && disc.title !== S.art.title) loadDiscArt(disc.title);
+}
+
+// Fetch art for the disc in the background (cached; online lookup if enabled).
+async function loadDiscArt(title, opts) {
+  S.art = { title, url: null, source: null, loading: !!title.trim() };
+  render();
+  if (!title.trim()) return;
+  try {
+    const r = await window.md.getArt(title, opts);
+    if (S.art.title !== title) return; // disc changed meanwhile
+    S.art = { title, url: r?.url || null, source: r?.source || null, manual: !!r?.manual, loading: false };
+  } catch (e) {
+    if (S.art.title === title) S.art.loading = false;
+  }
+  render();
 }
 
 $('connectBtn').onclick = () => S.connected
@@ -222,10 +250,64 @@ $('eraseBtn').onclick = () => {
 };
 $('eraseInput').oninput = (e) => ($('eraseOk').disabled = e.target.value.trim().toUpperCase() !== 'ERASE');
 
+// ---------- album art dialog
+function showArtPreview() {
+  const url = S.art.title === S.disc?.title ? S.art.url : null;
+  $('artPreviewImg').hidden = !url;
+  if (url) $('artPreviewImg').src = url;
+  $('artPreviewNone').hidden = !!url;
+  $('artRemove').disabled = !url;
+  const s = $('artStatus');
+  if (url && S.art.source) {
+    s.innerHTML = `Found: <b>${esc(S.art.source.artist)} – ${esc(S.art.source.title)}</b><br><a data-mbid="${esc(S.art.source.mbid)}">View on MusicBrainz</a>`;
+  } else s.textContent = url ? 'Your own image.' : '';
+}
+$('discArt').onclick = async () => {
+  if (!S.disc) return;
+  const guess = (S.disc.title || '').split(/\s+[-–—\/]\s+/);
+  $('artArtist').value = guess.length > 1 ? guess[0] : '';
+  $('artAlbum').value = guess.length > 1 ? guess.slice(1).join(' - ') : S.disc.title || '';
+  $('artAuto').checked = (await window.md.getSettings()).onlineArt;
+  showArtPreview();
+  $('artDlg').showModal();
+};
+$('artStatus').onclick = (e) => { const id = e.target.dataset?.mbid; if (id) window.md.openExternal(`https://musicbrainz.org/release-group/${id}`); };
+$('artSearch').onclick = async () => {
+  const title = S.disc?.title || $('artAlbum').value;
+  if (!$('artAlbum').value.trim()) { $('artStatus').textContent = 'Enter an album name to search.'; return; }
+  $('artSearch').disabled = true; $('artStatus').textContent = 'Searching MusicBrainz…';
+  try {
+    const r = await window.md.getArt(title, { force: true, artist: $('artArtist').value, album: $('artAlbum').value });
+    if (r) { S.art = { title: S.disc?.title, url: r.url, source: r.source, loading: false }; render(); showArtPreview(); }
+    else $('artStatus').textContent = 'No cover found. Try fewer words, check the spelling, or choose your own image.';
+  } catch (e) { $('artStatus').textContent = `Search failed: ${e.message}. Are you online?`; }
+  $('artSearch').disabled = false;
+};
+$('artChoose').onclick = async () => {
+  try {
+    const r = await window.md.chooseArt(S.disc.title);
+    if (r) { S.art = { title: S.disc.title, url: r.url, source: null, manual: true, loading: false }; render(); showArtPreview(); }
+  } catch (e) { $('artStatus').textContent = e.message; }
+};
+$('artRemove').onclick = async () => {
+  await window.md.clearArt(S.disc.title);
+  S.art = { title: S.disc.title, url: null, source: null, loading: false }; render(); showArtPreview();
+};
+$('artAuto').onchange = (e) => window.md.setSettings({ onlineArt: e.target.checked });
+['artArtist', 'artAlbum'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('artSearch').click(); } }));
+
 // ---------- queue
 async function addFiles(files) {
-  for (const f of files) S.queue.push({ ...f, id: nextId++, state: 'queued', pct: 0 });
+  const added = files.map((f) => ({ ...f, id: nextId++, state: 'queued', pct: 0 }));
+  S.queue.push(...added);
   render();
+  // Files without embedded covers: look up their album online (one lookup per album, cached).
+  const albums = new Map();
+  for (const q of added) if (!q.art && q.album) {
+    const key = `${q.artist} - ${q.album}`;
+    if (!albums.has(key)) albums.set(key, window.md.getArt(key, { artist: q.artist, album: q.album }).catch(() => null));
+    albums.get(key).then((r) => { if (r?.url) { q.art = r.url; render(); } });
+  }
 }
 $('drop').onclick = () => window.md.pickFiles().then(addFiles).catch((e) => toast(e.message, true));
 $('drop').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') $('drop').click(); };

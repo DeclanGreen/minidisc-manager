@@ -6,6 +6,7 @@ A Windows desktop app for Sony **NetMD** MiniDisc players (MZ-N505, MZ-N710, MZ-
 - **Copy music to the disc.** Drag in MP3s (or FLAC, WAV, M4A, OGG…). The app decodes them and records them as ATRAC in **SP**, **LP2** or **LP4**. Track titles are filled in from the file tags ("Artist - Title"), and you can edit them before sending.
 - **Edit the disc.** Rename the disc and tracks (double-click), drag tracks to reorder them, and delete tracks.
 - **Erase the whole disc.** You type `ERASE` to confirm.
+- **Album art.** Covers are looked up online from the disc title ("Artist - Album") on [MusicBrainz](https://musicbrainz.org) / the [Cover Art Archive](https://coverartarchive.org), with no account needed. Queued files show their embedded cover, or one looked up from their artist and album tags. Click the disc art to search with different words, choose your own image, remove it, or turn online lookup off. Art is cached on your PC and only appears in the app, since MiniDiscs can't store images.
 - **Control the player.** Play, pause, stop, next and previous, with the playing track highlighted.
 - **Check capacity first.** The app warns you before you queue more music than the disc can hold.
 
