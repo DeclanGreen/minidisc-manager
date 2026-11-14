@@ -478,6 +478,31 @@ handle('cd-read', async (letter) => {
   };
 });
 
+// Same steps as netmd-js `download()`, but without its unbounded wait for state 'ready'/'discBlank'.
+// After recording a track the MZ-N707 reports operating status 0x56FF, which netmd-js doesn't know ("unknown"),
+// so its prepareDownload() loops forever and the second track never starts. Here we only wait (briefly) while
+// the player is genuinely busy, then carry on.
+const BUSY_STATES = new Set(['playing', 'paused', 'fastForward', 'rewind', 'readingTOC']);
+async function downloadTrack(md, track, onProgress) {
+  const deadline = Date.now() + 15000;
+  for (;;) {
+    const { state } = await netmd.getDeviceStatus(md);
+    if (state === 'noDisc') throw new Error('No disc in the player.');
+    if (!BUSY_STATES.has(state) || Date.now() > deadline) break;
+    if (state !== 'readingTOC') { try { await md.stop(); } catch {} }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  try { await md.sessionKeyForget(); await md.leaveSecureSession(); } catch {}
+  await md.acquire();
+  try { await md.disableNewTrackProtection(1); } catch {}
+  const session = new netmd.MDSession(md);
+  await session.init();
+  const result = await session.downloadTrack(track, onProgress);
+  await session.close();
+  await md.release();
+  return result;
+}
+
 // items: [{id, path, title, cd?}], mode: 'SP' | 'LP2' | 'LP4'
 handle('upload', (items, mode) => exclusive(async () => {
   const md = requireDevice();
@@ -508,7 +533,8 @@ handle('upload', (items, mode) => exclusive(async () => {
         const title = cleanTitle(item.title);
         const track = new netmd.MDTrack(title, format, data, 0x400, '', encryptor);
         log(`Transferring "${title}"`);
-        await netmd.download(md, track, ({ writtenBytes, totalBytes }) => {
+        send('upload-progress', { id: item.id, stage: 'transferring', pct: 0 });
+        await downloadTrack(md, track, ({ writtenBytes, totalBytes }) => {
           send('upload-progress', { id: item.id, stage: 'transferring', pct: totalBytes ? writtenBytes / totalBytes : 0 });
         });
         send('upload-progress', { id: item.id, stage: 'done', pct: 1 });
