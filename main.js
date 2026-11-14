@@ -478,85 +478,115 @@ handle('cd-read', async (letter) => {
   };
 });
 
-// Same steps as netmd-js `download()`, but without its unbounded wait for state 'ready'/'discBlank'.
-// After recording a track the MZ-N707 reports operating status 0x56FF, which netmd-js doesn't know ("unknown"),
-// so its prepareDownload() loops forever and the second track never starts. Here we only wait (briefly) while
-// the player is genuinely busy, then carry on.
-const BUSY_STATES = new Set(['playing', 'paused', 'fastForward', 'rewind', 'readingTOC']);
-async function downloadTrack(md, track, onProgress) {
-  const deadline = Date.now() + 15000;
+// Same steps as netmd-js `download()`, with three fixes found while testing on an MZ-N707:
+// 1. A fresh encryption worker per track. netmd-js's node-encrypt-worker calls process.exit() after its last
+//    chunk, so a reused worker is dead and the second track waits forever for data that never comes.
+// 2. A bounded wait for the player to be ready. netmd-js's prepareDownload() waits with no limit for
+//    'ready'/'discBlank', and the player sometimes reports operating status 0x56FF ("unknown"), notably after
+//    an interrupted transfer. Sending audio in that state stalls, so wait for it to clear, but not forever.
+// 3. A stall watchdog: if no audio is accepted for STALL_MS, give up with a clear message instead of hanging.
+const BUSY_STATES = new Set(['playing', 'paused', 'fastForward', 'rewind']);
+const READY_STATES = new Set(['ready', 'discBlank']);
+const STALL_MS = 45000;
+class PlayerStalled extends Error {}
+async function waitForReady(md, onWaiting) {
+  const deadline = Date.now() + 60000;
+  let waited = false;
   for (;;) {
     const { state } = await netmd.getDeviceStatus(md);
     if (state === 'noDisc') throw new Error('No disc in the player.');
-    if (!BUSY_STATES.has(state) || Date.now() > deadline) break;
-    if (state !== 'readingTOC') { try { await md.stop(); } catch {} }
-    await new Promise((r) => setTimeout(r, 300));
+    if (READY_STATES.has(state)) return;
+    if (Date.now() > deadline) { log(`Player still not ready (state: ${state}); trying anyway`); return; }
+    if (!waited) { waited = true; log(`Waiting for the player to be ready (state: ${state})…`); onWaiting && onWaiting(); }
+    if (BUSY_STATES.has(state)) { try { await md.stop(); } catch {} }
+    await new Promise((r) => setTimeout(r, 500));
   }
-  try { await md.sessionKeyForget(); await md.leaveSecureSession(); } catch {}
-  await md.acquire();
-  try { await md.disableNewTrackProtection(1); } catch {}
-  const session = new netmd.MDSession(md);
-  await session.init();
-  const result = await session.downloadTrack(track, onProgress);
-  await session.close();
-  await md.release();
-  return result;
+}
+async function downloadTrack(md, title, format, data, onProgress, onWaiting) {
+  await waitForReady(md, onWaiting);
+  const worker = new Worker(require.resolve('netmd-js/dist/node-encrypt-worker.js'));
+  let stallTimer;
+  try {
+    const track = new netmd.MDTrack(title, format, data, 0x400, '', makeGetAsyncPacketIteratorOnWorkerThread(worker));
+    try { await md.sessionKeyForget(); await md.leaveSecureSession(); } catch {}
+    await md.acquire();
+    try { await md.disableNewTrackProtection(1); } catch {}
+    const session = new netmd.MDSession(md);
+    await session.init();
+    let lastBytes = -1, lastChange = Date.now();
+    const stalled = new Promise((_, reject) => {
+      stallTimer = setInterval(() => {
+        if (lastBytes >= 0 && Date.now() - lastChange > STALL_MS) reject(new PlayerStalled('The player stopped accepting audio.'));
+      }, 1000);
+    });
+    lastBytes = 0;
+    const result = await Promise.race([
+      session.downloadTrack(track, (p) => {
+        if (p.writtenBytes !== lastBytes) { lastBytes = p.writtenBytes; lastChange = Date.now(); }
+        // Once all audio is sent the player takes several seconds to save the track; that's not a stall.
+        if (p.totalBytes && p.writtenBytes >= p.totalBytes) lastBytes = -1;
+        onProgress(p);
+      }),
+      stalled,
+    ]);
+    clearInterval(stallTimer);
+    await session.close();
+    await md.release();
+    return result;
+  } finally {
+    clearInterval(stallTimer);
+    await worker.terminate().catch(() => {});
+  }
 }
 
 // items: [{id, path, title, cd?}], mode: 'SP' | 'LP2' | 'LP4'
 handle('upload', (items, mode) => exclusive(async () => {
   const md = requireDevice();
   cancelRequested = false;
-  const worker = new Worker(require.resolve('netmd-js/dist/node-encrypt-worker.js'));
-  const encryptor = makeGetAsyncPacketIteratorOnWorkerThread(worker);
   let done = 0;
-  try {
-    for (const item of items) {
-      if (cancelRequested) { send('upload-progress', { id: item.id, stage: 'cancelled' }); continue; }
-      let ripped = null;
-      try {
-        let source = item.path;
-        if (item.cd) {
-          // Read the track off the audio CD into a temporary WAV first.
-          send('upload-progress', { id: item.id, stage: 'ripping', pct: 0 });
-          log(`Reading CD track ${item.cd.n} from drive ${item.cd.drive}:`);
-          ripped = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mdm-cd-')), 'track.wav');
-          const { badSectors } = await cd.rip(CD_BIN(), item.cd.drive, item.cd.lba, item.cd.sectors, ripped,
-            (pct) => send('upload-progress', { id: item.id, stage: 'ripping', pct }));
-          if (badSectors) log(`Warning: ${badSectors} unreadable sector(s) on CD track ${item.cd.n} were replaced with silence (scratched disc?)`);
-          source = ripped;
-        }
-        send('upload-progress', { id: item.id, stage: 'converting', pct: 0 });
-        log(`Converting "${item.title}" to ${mode}`);
-        const { data, format } = await encode(source, mode);
-        if (ripped) { fs.rmSync(path.dirname(ripped), { recursive: true, force: true }); ripped = null; }
-        const title = cleanTitle(item.title);
-        const track = new netmd.MDTrack(title, format, data, 0x400, '', encryptor);
-        log(`Transferring "${title}"`);
-        send('upload-progress', { id: item.id, stage: 'transferring', pct: 0 });
-        await downloadTrack(md, track, ({ writtenBytes, totalBytes }) => {
-          send('upload-progress', { id: item.id, stage: 'transferring', pct: totalBytes ? writtenBytes / totalBytes : 0 });
-        });
-        send('upload-progress', { id: item.id, stage: 'done', pct: 1 });
-        done++;
-      } catch (err) {
-        log(`Failed "${item.title}": ${err.message}`);
-        send('upload-progress', { id: item.id, stage: 'error', error: err.message });
-        if (!iface) break; // device gone
-        if (isUsbStall(err)) {
-          // The player stopped answering mid-command; every later track would fail the same way.
-          log('The player stopped responding. Unplug it, wait a few seconds, plug it back in, then press Send again.');
-          try { await iface.netMd.finalize(); } catch {}
-          iface = null;
-          send('device-lost');
-          break;
-        }
-      } finally {
-        if (ripped) fs.rmSync(path.dirname(ripped), { recursive: true, force: true });
+  for (const item of items) {
+    if (cancelRequested) { send('upload-progress', { id: item.id, stage: 'cancelled' }); continue; }
+    let ripped = null;
+    try {
+      let source = item.path;
+      if (item.cd) {
+        // Read the track off the audio CD into a temporary WAV first.
+        send('upload-progress', { id: item.id, stage: 'ripping', pct: 0 });
+        log(`Reading CD track ${item.cd.n} from drive ${item.cd.drive}:`);
+        ripped = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mdm-cd-')), 'track.wav');
+        const { badSectors } = await cd.rip(CD_BIN(), item.cd.drive, item.cd.lba, item.cd.sectors, ripped,
+          (pct) => send('upload-progress', { id: item.id, stage: 'ripping', pct }));
+        if (badSectors) log(`Warning: ${badSectors} unreadable sector(s) on CD track ${item.cd.n} were replaced with silence (scratched disc?)`);
+        source = ripped;
       }
+      send('upload-progress', { id: item.id, stage: 'converting', pct: 0 });
+      log(`Converting "${item.title}" to ${mode}`);
+      const { data, format } = await encode(source, mode);
+      if (ripped) { fs.rmSync(path.dirname(ripped), { recursive: true, force: true }); ripped = null; }
+      const title = cleanTitle(item.title);
+      log(`Transferring "${title}"`);
+      send('upload-progress', { id: item.id, stage: 'transferring', pct: 0 });
+      await downloadTrack(md, title, format, data,
+        ({ writtenBytes, totalBytes }) => send('upload-progress', { id: item.id, stage: 'transferring', pct: totalBytes ? writtenBytes / totalBytes : 0 }),
+        () => send('upload-progress', { id: item.id, stage: 'waiting', pct: 0 }));
+      send('upload-progress', { id: item.id, stage: 'done', pct: 1 });
+      log(`"${title}" is on the disc`);
+      done++;
+    } catch (err) {
+      log(`Failed "${item.title}": ${err.message}`);
+      send('upload-progress', { id: item.id, stage: 'error', error: err.message });
+      if (!iface) break; // device gone
+      if (err instanceof PlayerStalled || isUsbStall(err)) {
+        // The player stopped answering mid-transfer; every later track would fail the same way.
+        log('The player stopped responding. Unplug it, wait a few seconds, plug it back in, then press Send again.');
+        try { await iface.netMd.finalize(); } catch {}
+        iface = null;
+        send('device-lost');
+        break;
+      }
+    } finally {
+      if (ripped) fs.rmSync(path.dirname(ripped), { recursive: true, force: true });
     }
-  } finally {
-    await worker.terminate();
   }
   log(`Upload finished: ${done} of ${items.length} track(s)`);
   return done;

@@ -98,7 +98,7 @@ function renderTracks(canEdit) {
 }
 
 function renderQueue(d, queuedSec, left) {
-  const STATE = { queued: 'Ready', ripping: 'Reading CD…', converting: 'Converting…', transferring: 'Sending', done: 'On disc ✓', error: 'Failed', cancelled: 'Cancelled' };
+  const STATE = { queued: 'Ready', ripping: 'Reading CD…', converting: 'Converting…', waiting: 'Waiting for player…', transferring: 'Sending', done: 'On disc ✓', error: 'Failed', cancelled: 'Cancelled' };
   const list = $('queue');
   // Preserve focus while the user is editing a title.
   const focusId = document.activeElement?.closest?.('#queue li')?.dataset.id;
@@ -467,7 +467,7 @@ window.md.on('upload-progress', ({ id, stage, pct, error }) => {
   const q = S.queue.find((x) => x.id === id); if (!q) return;
   q.state = stage; q.pct = pct ?? q.pct; if (error) q.error = error;
   const cur = S.queue.filter((x) => x.state === 'done').length;
-  render(stage === 'ripping' ? `Reading "${q.title}" from CD · ${Math.round(pct * 100)}%` : stage === 'converting' ? `Converting "${q.title}"…` : stage === 'transferring' ? `Sending "${q.title}" · ${Math.round(pct * 100)}%` : `Sent ${cur} track(s)`);
+  render(stage === 'ripping' ? `Reading "${q.title}" from CD · ${Math.round(pct * 100)}%` : stage === 'converting' ? `Converting "${q.title}"…` : stage === 'waiting' ? `Waiting for the player to be ready…` : stage === 'transferring' && pct >= 1 ? `Saving "${q.title}" on the player…` : stage === 'transferring' ? `Sending "${q.title}" · ${Math.round(pct * 100)}%` : `Sent ${cur} track(s)`);
 });
 
 // ---------- log + device events
