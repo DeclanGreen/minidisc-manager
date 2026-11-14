@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('md', {
   getArt: (title, opts) => call('get-art', title, opts),
   chooseArt: (title) => call('choose-art', title),
   clearArt: (title) => call('clear-art', title),
+  getLyrics: (q) => call('get-lyrics', q),
   getSettings: () => call('get-settings'),
   setSettings: (patch) => call('set-settings', patch),
   openExternal: (url) => call('open-external', url),

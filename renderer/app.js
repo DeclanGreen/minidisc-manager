@@ -5,6 +5,9 @@ const S = {
   queue: [], mode: 'SP', busy: false, uploading: false, atracdenc: false,
   lastDiscPresent: null, playingTrack: null,
   art: { title: null, url: null, source: null, loading: false },
+  tab: 'transfer',
+  ly: { key: null, target: null, data: null, lines: null, loading: false, error: null, cur: -1 },
+  pos: { track: null, sec: 0, at: 0, playing: false },
 };
 const MODE_FACTOR = { SP: 1, LP2: 2, LP4: 4 };
 let nextId = 1;
@@ -77,6 +80,7 @@ function render(busyLabel) {
 
   renderTracks(canEdit);
   renderQueue(d, queuedSec, left);
+  syncLyrics();
 }
 
 function renderTracks(canEdit) {
@@ -371,16 +375,176 @@ window.md.on('log', (line) => { const l = $('log'); l.textContent += line + '\n'
 window.md.on('device-lost', () => { S.connected = false; S.disc = null; S.sel.clear(); S.uploading = false; render(); toast('Player disconnected', true); });
 window.md.on('device-attached', () => { if (!S.connected) $('connectBtn').click(); });
 
-// Poll the player for disc insert/eject and the playing track.
-setInterval(async () => {
-  if (!S.connected || S.busy || S.uploading || document.querySelector('dialog[open]')) return;
+// ---------- lyrics panel
+function setTab(tab) {
+  S.tab = tab;
+  document.querySelectorAll('#tabs button').forEach((b) => { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', b.dataset.tab === tab); });
+  $('paneTransfer').hidden = tab !== 'transfer';
+  $('paneLyrics').hidden = tab !== 'lyrics';
+  syncLyrics();
+}
+$('tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); };
+
+// Which disc track should the panel show? Playing track (if following), else the single selection.
+function lyricsTarget() {
+  if (!S.disc) return null;
+  const sel = S.sel.size === 1 ? [...S.sel][0] : null;
+  const idx = $('lyFollow').checked && S.playingTrack != null ? S.playingTrack : sel ?? S.playingTrack;
+  const t = S.disc.tracks.find((x) => x.index === idx);
+  if (!t || !t.title) return null;
+  // Track titled "Artist - Song" wins; otherwise take the artist from the disc title.
+  const parts = t.title.split(/\s+-\s+/);
+  const discParts = (S.disc.title || '').split(/\s+[-–—\/]\s+/);
+  return {
+    index: t.index, seconds: t.seconds,
+    artist: parts.length > 1 ? parts[0] : discParts.length > 1 ? discParts[0] : '',
+    title: parts.length > 1 ? parts.slice(1).join(' - ') : t.title,
+  };
+}
+
+function syncLyrics() {
+  $('liveDot').hidden = S.playingTrack == null;
+  if (S.tab !== 'lyrics') return;
+  drawLyricsArt();
+  const tg = lyricsTarget();
+  const key = tg ? `${tg.index}|${tg.artist}|${tg.title}`.toLowerCase() : null;
+  if (key === S.ly.key) return;
+  S.ly = { key, target: tg, loading: !!tg, data: null, lines: null, error: null };
+  $('lySArtist').value = ''; $('lySTitle').value = '';
+  drawLyrics();
+  if (tg) loadLyrics({});
+}
+
+async function loadLyrics(opts) {
+  const { key, target: tg } = S.ly;
+  S.ly.loading = true; S.ly.error = null; drawLyrics();
   try {
-    const st = await window.md.status();
-    if (st.discPresent !== S.lastDiscPresent) { await busy(st.discPresent ? 'Reading disc…' : 'Disc ejected', refresh); return; }
-    const playing = st.state === 'playing' || st.state === 'paused' ? st.track : null;
-    if (playing !== S.playingTrack) { S.playingTrack = playing; render(); }
-  } catch {}
-}, 3000);
+    const r = await window.md.getLyrics({ artist: tg.artist, title: tg.title, seconds: tg.seconds, ...opts });
+    if (S.ly.key !== key) return;
+    S.ly.data = r;
+    S.ly.lines = r?.synced ? parseLRC(r.synced) : null;
+  } catch (e) {
+    if (S.ly.key !== key) return;
+    S.ly.error = e.message;
+  }
+  S.ly.loading = false;
+  drawLyrics();
+}
+
+// "[01:02.34] text" (a line may carry several timestamps) → [{ t, text }] sorted by time.
+function parseLRC(lrc) {
+  const out = [];
+  for (const raw of lrc.split(/\r?\n/)) {
+    const stamps = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
+    if (!stamps.length) continue;
+    const text = raw.replace(/\[[^\]]*\]/g, '').trim();
+    for (const m of stamps) out.push({ t: +m[1] * 60 + +m[2], text });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+function drawLyricsArt() {
+  const art = S.ly.target && S.art.title === S.disc?.title ? S.art.url : null;
+  if (art && $('lyArt').src !== art) $('lyArt').src = art;
+  $('lyArt').hidden = !art;
+  $('lyArtPh').hidden = !!art;
+}
+
+function drawLyrics() {
+  const { target: tg, data, loading, error, lines } = S.ly;
+  const body = $('lyBody');
+  $('lyTitle').textContent = tg ? tg.title : 'No track selected';
+  $('lyArtist').textContent = tg ? [tg.artist, `Track ${tg.index + 1}`].filter(Boolean).join(' · ') : '';
+  drawLyricsArt();
+  body.classList.remove('synced', 'idle');
+  S.ly.cur = -1;
+  const msg = (t) => (body.innerHTML = `<p class="ly-msg">${t}</p>`);
+  if (!tg) msg(S.disc ? 'Click a track on the disc, or press play on the player, to see its lyrics.' : 'Connect your player and insert a disc to see lyrics.');
+  else if (loading) msg('Searching for lyrics…');
+  else if (error) msg(`Couldn't reach the lyrics service.<br><span class="small">${esc(error)}</span>`);
+  else if (!data) msg(`No lyrics found for “${esc(tg.title)}”.<br><span class="small">Try searching with a different artist or title below.</span>`);
+  else if (data.instrumental) msg('♪ Instrumental ♪');
+  else if (lines?.length) {
+    body.classList.add('synced');
+    body.innerHTML = lines.map((l, i) => `<p data-i="${i}">${esc(l.text) || '♪'}</p>`).join('');
+  } else body.innerHTML = data.plain.split('\n').map((l) => `<p>${esc(l)}</p>`).join('');
+  if (!loading) body.scrollTop = 0;
+
+  const notFound = tg && !loading && !error && !data;
+  $('lySearch').hidden = !notFound && !S.ly.searchOpen;
+  if (tg && ($('lySearch').hidden === false) && !$('lySArtist').value && !$('lySTitle').value) { $('lySArtist').value = tg.artist; $('lySTitle').value = tg.title; }
+  $('lyFix').hidden = !data;
+  $('lySource').textContent = data ? `Lyrics: ${data.source}${data.synced ? ' · synced' : ''}${data.artist && data.title ? ` · ${data.artist} – ${data.title}` : ''}` : '';
+  $('lySource').title = $('lySource').textContent;
+}
+
+$('lyFollow').onchange = () => { S.ly.key = undefined; syncLyrics(); };
+$('lyAuto').onchange = (e) => window.md.setSettings({ onlineLyrics: e.target.checked });
+$('lyFix').onclick = () => {
+  S.ly.searchOpen = !S.ly.searchOpen;
+  $('lySArtist').value = S.ly.target?.artist || ''; $('lySTitle').value = S.ly.target?.title || '';
+  drawLyrics();
+  if (S.ly.searchOpen) $('lySTitle').focus();
+};
+$('lySearch').onsubmit = (e) => {
+  e.preventDefault();
+  const tg = S.ly.target; if (!tg) return;
+  S.ly.searchOpen = false;
+  // Search with the corrected words, but remember the result for this disc track.
+  loadLyrics({ artist: $('lySArtist').value, title: $('lySTitle').value, force: true, cacheAs: { artist: tg.artist, title: tg.title } });
+};
+
+// Karaoke highlight: interpolate the player's position between polls.
+let lyScrollPause = 0;
+$('lyBody').addEventListener('wheel', () => (lyScrollPause = performance.now() + 4000), { passive: true });
+function playerPos() {
+  const p = S.pos;
+  return p.sec + (p.playing ? (performance.now() - p.at) / 1000 : 0);
+}
+setInterval(() => {
+  const { lines, target } = S.ly;
+  if (S.tab !== 'lyrics' || !lines?.length) return;
+  const body = $('lyBody');
+  const active = S.pos.track === target.index && S.playingTrack === target.index;
+  body.classList.toggle('idle', !active);
+  if (!active) { if (S.ly.cur !== -1) { body.querySelectorAll('p').forEach((p) => p.classList.remove('on', 'past')); S.ly.cur = -1; } return; }
+  const now = playerPos() + 0.2;
+  let cur = -1;
+  for (let i = 0; i < lines.length && lines[i].t <= now; i++) cur = i;
+  if (cur === S.ly.cur) return;
+  S.ly.cur = cur;
+  body.querySelectorAll('p').forEach((p, i) => { p.classList.toggle('on', i === cur); p.classList.toggle('past', i < cur); });
+  const el = body.querySelector(`p[data-i="${Math.max(cur, 0)}"]`);
+  if (el && performance.now() > lyScrollPause) body.scrollTop = el.offsetTop - body.clientHeight / 2 + el.offsetHeight / 2;
+}, 200);
+
+// ---------- poll the player: disc insert/eject, playing track and position
+async function poll() {
+  let delay = 3000;
+  if (S.connected && !S.busy && !S.uploading && !document.querySelector('dialog[open]')) {
+    try {
+      const st = await window.md.status();
+      if (st.discPresent !== S.lastDiscPresent) { await busy(st.discPresent ? 'Reading disc…' : 'Disc ejected', refresh); }
+      else {
+        const playingTrack = st.state === 'playing' || st.state === 'paused' ? st.track : null;
+        if (st.track != null && st.time) {
+          const sec = st.time.minute * 60 + st.time.second;
+          const predicted = playerPos();
+          // Keep the smoother local clock if the player's whole-second reading agrees with it.
+          const keep = S.pos.track === st.track && S.pos.playing && st.state === 'playing' && Math.abs(predicted - sec) < 1.2;
+          S.pos = keep ? { ...S.pos } : { track: st.track, sec, at: performance.now(), playing: st.state === 'playing' };
+          if (!keep) S.ly.cur = -2; // force a redraw of the highlight
+          S.pos.playing = st.state === 'playing';
+        }
+        if (playingTrack !== S.playingTrack) { S.playingTrack = playingTrack; render(); }
+        if (st.state === 'playing' && S.tab === 'lyrics') delay = 1000;
+      }
+    } catch {}
+  }
+  setTimeout(poll, delay);
+}
+setTimeout(poll, 3000);
 
 window.md.env().then((env) => { S.atracdenc = env.atracdenc; render(); });
+window.md.getSettings().then((s) => ($('lyAuto').checked = s.onlineLyrics));
 render();

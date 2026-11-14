@@ -180,7 +180,7 @@ let artIndex = null;
 
 function loadSettings() {
   if (!settings) { try { settings = JSON.parse(fs.readFileSync(SETTINGS_FILE(), 'utf8')); } catch { settings = {}; } }
-  return { onlineArt: true, ...settings };
+  return { onlineArt: true, onlineLyrics: true, ...settings };
 }
 function saveSettings(patch) {
   settings = { ...loadSettings(), ...patch };
@@ -283,6 +283,66 @@ async function getArt(title, opts = {}) {
   return storeArt(key, res.buf, res.ext, { source: res.source });
 }
 
+// ---------- lyrics (LRCLIB, falling back to lyrics.ovh; cached on disk)
+let lyricsIdx = null;
+const LYRICS_FILE = () => path.join(app.getPath('userData'), 'lyrics.json');
+function lyricsIndex() {
+  if (!lyricsIdx) { try { lyricsIdx = JSON.parse(fs.readFileSync(LYRICS_FILE(), 'utf8')); } catch { lyricsIdx = {}; } }
+  return lyricsIdx;
+}
+const saveLyrics = () => fs.writeFileSync(LYRICS_FILE(), JSON.stringify(lyricsIdx));
+const lyricsKey = (artist, title) => `${artist || ''}|${title || ''}`.trim().toLowerCase().replace(/\s+/g, ' ');
+
+async function getJSON(url) {
+  const r = await fetch(url, { headers: { 'User-Agent': UA(), Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`${new URL(url).host} replied ${r.status}`);
+  return r.json();
+}
+
+// Choose the best LRCLIB hit: close in length first, then synced, then closest length.
+// Without an artist we insist on a close length match to avoid same-named songs.
+function pickLyrics(list, seconds, haveArtist) {
+  let c = (list || []).filter((x) => x.plainLyrics || x.syncedLyrics || x.instrumental);
+  const diff = (x) => (seconds ? Math.abs((x.duration || 0) - seconds) : 0);
+  if (!haveArtist && seconds) c = c.filter((x) => diff(x) <= 5);
+  c.sort((a, b) => (diff(a) > 4) - (diff(b) > 4) || !a.syncedLyrics - !b.syncedLyrics || diff(a) - diff(b));
+  return c[0] || null;
+}
+
+async function findLyrics({ artist = '', title = '', seconds = 0, force = false, cacheAs }) {
+  artist = artist.trim(); title = title.trim();
+  if (!title) return null;
+  const key = cacheAs ? lyricsKey(cacheAs.artist, cacheAs.title) : lyricsKey(artist, title);
+  const hit = lyricsIndex()[key];
+  if (!force && hit) {
+    if (!hit.none) return hit;
+    if (Date.now() - hit.ts < 7 * 864e5) return null;
+  }
+  if (!force && !loadSettings().onlineLyrics) return null;
+
+  let res = null;
+  const tries = artist ? [{ artist_name: artist, track_name: title }, { q: `${artist} ${title}` }] : [{ track_name: title }];
+  for (const p of tries) {
+    const best = pickLyrics(await getJSON('https://lrclib.net/api/search?' + new URLSearchParams(p)), seconds, !!artist);
+    if (best) {
+      res = { source: 'LRCLIB', artist: best.artistName, title: best.trackName, album: best.albumName, duration: best.duration,
+        plain: best.plainLyrics || '', synced: best.syncedLyrics || '', instrumental: !!best.instrumental };
+      break;
+    }
+  }
+  if (!res && artist) {
+    try {
+      const j = await getJSON(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`);
+      if (j && j.lyrics && j.lyrics.trim()) res = { source: 'lyrics.ovh', artist, title, plain: j.lyrics.replace(/\r\n/g, '\n').trim(), synced: '', instrumental: false };
+    } catch {} // backup source is often slow/down; ignore
+  }
+  lyricsIndex()[key] = res || { none: true, ts: Date.now() };
+  saveLyrics();
+  if (res) log(`Lyrics found for "${title}" (${res.source}${res.synced ? ', synced' : ''})`);
+  return res;
+}
+
 // ---------- IPC
 const handle = (ch, fn) => ipcMain.handle(ch, async (_e, ...args) => {
   try { return { ok: true, value: await fn(...args) }; }
@@ -334,6 +394,7 @@ handle('clear-art', (title) => {
   index()[key] = { cleared: true };
   saveIndex();
 });
+handle('get-lyrics', (q) => findLyrics(q));
 handle('get-settings', () => loadSettings());
 handle('set-settings', (patch) => saveSettings(patch));
 handle('open-external', (url) => { if (/^https:\/\/musicbrainz\.org\//.test(url)) shell.openExternal(url); });

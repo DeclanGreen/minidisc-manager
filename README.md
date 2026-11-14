@@ -7,6 +7,7 @@ A Windows desktop app for Sony **NetMD** MiniDisc players (MZ-N505, MZ-N710, MZ-
 - **Edit the disc.** Rename the disc and tracks (double-click), drag tracks to reorder them, and delete tracks.
 - **Erase the whole disc.** You type `ERASE` to confirm.
 - **Album art.** Covers are looked up online from the disc title ("Artist - Album") on [MusicBrainz](https://musicbrainz.org) / the [Cover Art Archive](https://coverartarchive.org), with no account needed. Queued files show their embedded cover, or one looked up from their artist and album tags. Click the disc art to search with different words, choose your own image, remove it, or turn online lookup off. Art is cached on your PC and only appears in the app, since MiniDiscs can't store images.
+- **Lyrics.** The **Lyrics** tab shows words for the selected track, or for whatever the player is playing. Lyrics come free from [LRCLIB](https://lrclib.net), with [lyrics.ovh](https://lyrics.ovh) as a backup. When LRCLIB has *synced* lyrics, the current line is highlighted and scrolls along as the MiniDisc plays. The artist is taken from the track title ("Artist - Song") or from the disc title. If the lyrics are wrong, click **Wrong lyrics?** to search with different words, and the app remembers the fix. Lyrics are cached on your PC. Lyrics sites are crowd-sourced, so they're occasionally wrong.
 - **Control the player.** Play, pause, stop, next and previous, with the playing track highlighted.
 - **Check capacity first.** The app warns you before you queue more music than the disc can hold.
 

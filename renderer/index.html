@@ -77,7 +77,35 @@
 
     <!-- Transfer panel -->
     <section class="panel queue-panel">
-      <div class="eyebrow">Transfer to disc</div>
+      <div class="tabs" id="tabs" role="tablist">
+        <button role="tab" data-tab="transfer" class="on" aria-selected="true">Transfer to disc</button>
+        <button role="tab" data-tab="lyrics" aria-selected="false">Lyrics <span class="live-dot" id="liveDot" hidden></span></button>
+      </div>
+
+      <div class="tab-pane" id="paneLyrics" role="tabpanel" hidden>
+        <div class="ly-head">
+          <img id="lyArt" class="ly-art" alt="" hidden><div class="ly-art ph" id="lyArtPh">♪</div>
+          <div class="ly-meta">
+            <div class="ly-title" id="lyTitle">No track selected</div>
+            <div class="muted small" id="lyArtist"></div>
+          </div>
+          <label class="check small" title="Show lyrics for whatever the player is playing"><input type="checkbox" id="lyFollow" checked> Follow playing</label>
+        </div>
+        <div class="ly-body" id="lyBody"></div>
+        <form class="ly-search" id="lySearch" hidden>
+          <input id="lySArtist" placeholder="Artist" autocomplete="off">
+          <input id="lySTitle" placeholder="Song title" autocomplete="off">
+          <button class="primary">Search</button>
+        </form>
+        <div class="ly-foot">
+          <span class="muted small" id="lySource"></span>
+          <div class="spacer"></div>
+          <label class="check small" title="Look up lyrics online automatically"><input type="checkbox" id="lyAuto"> Auto lookup</label>
+          <button type="button" class="ghost small-btn" id="lyFix" hidden>Wrong lyrics?</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="paneTransfer" role="tabpanel">
       <div class="drop" id="drop" tabindex="0" role="button">
         <div class="drop-icon">♪</div>
         <div><b>Drop MP3s here</b> or click to browse</div>
@@ -100,6 +128,7 @@
         <button id="clearBtn" class="ghost" disabled>Clear</button>
         <button id="cancelBtn" class="ghost hidden">Cancel</button>
         <button id="sendBtn" class="primary" disabled>Send to disc</button>
+      </div>
       </div>
     </section>
   </main>
