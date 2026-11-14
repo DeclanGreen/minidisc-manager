@@ -524,9 +524,34 @@ function createWindow() {
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  const page = path.join(__dirname, 'renderer', 'index.html');
+  const wc = win.webContents;
+  // Self-heal a blank window: occasionally the page process never starts or dies, leaving only the dark background.
+  let loaded = false, retries = 0;
+  const recover = (why) => {
+    loaded = false;
+    startupLog(`window recovery (${why}), attempt ${retries + 1}`);
+    if (win.isDestroyed() || retries++ >= 3) return;
+    setTimeout(() => { if (!win.isDestroyed()) win.loadFile(page); }, 500);
+  };
+  const watchdog = () => setTimeout(() => { if (!loaded && !win.isDestroyed()) { recover('page did not load in time'); watchdog(); } }, 10000);
+  wc.on('did-finish-load', () => { loaded = true; retries = 0; });
+  wc.on('did-fail-load', (_e, code, desc, _url, isMain) => { if (isMain) recover(`load failed: ${code} ${desc}`); });
+  wc.on('render-process-gone', (_e, d) => recover(`renderer gone: ${d.reason} (${d.exitCode})`));
+  wc.on('unresponsive', () => startupLog('page unresponsive'));
+  win.loadFile(page);
+  watchdog();
+  wc.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 }
+
+function startupLog(msg) {
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'startup.log'), `${new Date().toISOString()} ${msg}\n`); } catch {}
+}
+app.on('child-process-gone', (_e, d) => startupLog(`child process gone: ${d.type} ${d.reason} (${d.exitCode})`));
+
+// One copy at a time: a second launch just brings the existing window forward (only one process can hold the player).
+if (!app.requestSingleInstanceLock()) app.quit();
+app.on('second-instance', () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
 
 app.whenReady().then(() => {
   // YouTube embeds refuse to play without a referrer (error 153), and file:// pages send none.
