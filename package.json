@@ -34,7 +34,9 @@
       "lib/**",
       "renderer/**",
       "build/icon.png",
-      "node_modules/**"
+      "node_modules/**",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.md"
     ],
     "asar": false,
     "npmRebuild": false,
@@ -68,5 +70,9 @@
       "shortcutName": "MiniDisc Manager",
       "artifactName": "MiniDisc-Manager-Setup-${version}.${ext}"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DeclanGreen/minidisc-manager.git"
   }
 }

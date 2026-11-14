@@ -1,10 +1,10 @@
 # MiniDisc Manager
 
-A Windows desktop app for Sony **NetMD** MiniDisc players (MZ-N505, MZ-N710, MZ-N10, MZ-N1 and others). Plug the player in over USB to:
+A free Windows desktop app for Sony **NetMD** MiniDisc players (the USB "Net MD" Walkmans and decks from about 2001–2005, such as the MZ-N505, MZ-N707, MZ-N710, MZ-N10 and MZ-N1). Plug the player in over USB to:
 
 - **Read discs.** See the disc title, track list, recording mode (SP/LP2/LP4) and lengths, plus a capacity bar.
 - **Copy music to the disc.** Drag in MP3s (or FLAC, WAV, M4A, OGG…). The app decodes them and records them as ATRAC in **SP**, **LP2** or **LP4**. Track titles are filled in from the file tags ("Artist - Title"), and you can edit them before sending.
-- **Import from CD.** Put an audio CD in your PC's drive (a USB drive is fine) and click **Import from CD…** in the Transfer tab. The app identifies the CD on MusicBrainz, fills in the album, track names and cover art, and lets you choose tracks and edit names. It can also name the MiniDisc after the album. Tracks are read straight from the CD at full quality during the transfer, with no MP3 step in between. If a scratched sector won't read, it's replaced with silence and noted in the Activity log. The CD reader is a small helper built automatically on first use with the C# compiler that comes with Windows.
+- **Import from CD** *(experimental, not yet tested with a real CD drive)*. Put an audio CD in your PC's drive (a USB drive is fine) and click **Import from CD…** in the Transfer tab. The app identifies the CD on MusicBrainz, fills in the album, track names and cover art, and lets you choose tracks and edit names. It can also name the MiniDisc after the album. Tracks are read straight from the CD at full quality during the transfer, with no MP3 step in between. If a scratched sector won't read, it's replaced with silence and noted in the Activity log. The CD reader is a small helper built automatically on first use with the C# compiler that comes with Windows.
 - **Edit the disc.** Rename the disc and tracks (double-click), drag tracks to reorder them, and delete tracks.
 - **Erase the whole disc.** You type `ERASE` to confirm.
 - **Album art.** Covers are looked up online from the disc title ("Artist - Album") on [MusicBrainz](https://musicbrainz.org) / the [Cover Art Archive](https://coverartarchive.org), with no account needed. Queued files show their embedded cover, or one looked up from their artist and album tags. Click the disc art to search with different words, choose your own image, remove it, or turn online lookup off. Art is cached on your PC and only appears in the app, since MiniDiscs can't store images.
@@ -16,14 +16,38 @@ A Windows desktop app for Sony **NetMD** MiniDisc players (MZ-N505, MZ-N710, MZ-
 
 It's built on [netmd-js](https://github.com/cybercase/netmd-js), the open-source NetMD library behind Web MiniDisc.
 
-## One-time setup
+## Install
+
+You need Windows 10 or 11 (64-bit) and a NetMD player with its USB cable.
+
+1. **Download the installer.** Go to the [Releases page](https://github.com/DeclanGreen/minidisc-manager/releases), open the latest release and download `MiniDisc-Manager-Setup-x.y.z.exe`.
+2. **Run it.** Windows will probably show a blue **"Windows protected your PC"** warning, because the installer isn't signed with a paid certificate. Click **More info**, then **Run anyway**. Choose where to install, and it adds Start menu and desktop shortcuts.
+3. **Install the USB driver** (once per PC). See the next section.
+4. **Open MiniDisc Manager**, plug in the player with a disc inserted, and click **Connect player**.
+
+LP2 and LP4 work straight away, because the installer includes the encoder they need.
+
+### Install the USB driver (once per PC)
+
+Windows can't talk to a NetMD player until it has the generic **WinUSB** driver. Zadig is a free tool that installs it in a few clicks:
+
+1. Plug in the player with a disc inserted.
+2. Download **Zadig** from https://zadig.akeo.ie and run it.
+3. Choose **Options → List All Devices**, pick your player from the list (e.g. "Net MD Walkman"), make sure **WinUSB** is selected on the right, and click **Install Driver** (or **Replace Driver**).
+4. Wait for it to finish, then unplug the player and plug it back in.
+
+This replaces Sony's own driver, so SonicStage won't see the player afterwards. To undo it, open Device Manager, right-click the player, and choose **Uninstall device**.
+
+### Tested with
+
+So far it has only been tested with a **Sony MZ-N707** on Windows 11. Other NetMD players should work, because the underlying library (netmd-js) supports them, but haven't been tried with this app. If you try another model, please open an issue saying whether it worked.
+
+## Build from source
+
+For developers. You don't need this to use the app.
 
 1. **Install Node.js** (LTS) from nodejs.org.
-2. **Install the WinUSB driver for the player.** Windows can't talk to a NetMD player directly without it.
-   - Plug in the player with a disc inserted.
-   - Download **Zadig** from https://zadig.akeo.ie and run it.
-   - Choose *Options → List All Devices*, pick your player (e.g. "Net MD Walkman"), choose **WinUSB** and click *Install / Replace Driver*.
-   - Note: this replaces Sony's own driver, so SonicStage won't see the player afterwards. You can roll it back in Device Manager.
+2. **Install the USB driver** as described above.
 3. **Install the app's dependencies.** In this folder, run:
    ```
    npm install
@@ -54,6 +78,12 @@ This creates a Windows installer in `dist\`. If `bin\atracdenc.exe` is there, it
 - Tracks recorded with SonicStage show a 🔒. You can rename, move and delete them like any other track.
 - If something goes wrong mid-transfer, open the **Activity log** at the bottom. Unplugging and replugging the player usually clears a stuck state.
 
+## Good to know
+
+- The app looks things up on free online services: MusicBrainz and the Cover Art Archive (album details and art), LRCLIB and lyrics.ovh (lyrics), YouTube and Spotify. It sends them only search terms: artist, album and track names, or a CD's disc ID. You can turn off album art lookups in the disc art window (click the disc art), and lyrics lookups in the Lyrics tab.
+- The Video tab finds videos by reading YouTube's public search results page. That isn't an official YouTube service, so it may stop working if YouTube changes the page.
+- This project isn't affiliated with Sony. "Sony", "MiniDisc", "NetMD" and "ATRAC" are Sony trademarks.
+
 ## Project layout
 
 | File | Purpose |
@@ -61,6 +91,9 @@ This creates a Windows installer in `dist\`. If `bin\atracdenc.exe` is there, it
 | `main.js` | Electron main process: USB device access (netmd-js), audio conversion (ffmpeg, atracdenc), IPC |
 | `preload.js` | Safe bridge exposing `window.md` to the UI |
 | `renderer/` | The interface (HTML/CSS/JS) |
-| `bin/` | Optional `atracdenc.exe` for LP2/LP4 |
+| `lib/` | YouTube search, audio CD reading and MusicBrainz disc lookup |
+| `bin/` | `atracdenc.exe` for LP2/LP4 (downloaded separately, see above) and its licence |
 
-Licensed GPL-2.0-or-later, matching netmd-js.
+## Licence
+
+MiniDisc Manager is free software under the GNU General Public License v2.0 or later (see [LICENSE](LICENSE)), matching netmd-js. The installer bundles FFmpeg (GPL-3.0), atracdenc (LGPL-2.1), Electron (MIT) and other open-source components. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for their licences and source code links.
