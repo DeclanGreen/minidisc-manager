@@ -146,6 +146,7 @@
         <div><b>Drop MP3s here</b> or click to browse</div>
         <div class="muted small">MP3, FLAC, WAV, M4A, OGG… converted automatically</div>
       </div>
+      <button type="button" class="ghost cd-btn" id="cdBtn">💿 Import from CD…</button>
 
       <div class="mode-row">
         <div class="seg" id="modeSeg" role="radiogroup" aria-label="Recording mode">
@@ -209,6 +210,40 @@
       </div>
       <label class="check"><input type="checkbox" id="artAuto"> Look up album art online automatically (MusicBrainz / Cover Art Archive)</label>
       <menu><button value="close" class="ghost">Done</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="cdDlg" class="cd-dlg">
+    <form method="dialog">
+      <div class="cd-top">
+        <h3>Import from CD</h3>
+        <div class="spacer"></div>
+        <select id="cdDrive" aria-label="CD drive"></select>
+        <button type="button" class="ghost small-btn" id="cdReload" title="Read the disc again">Reload</button>
+        <button type="button" class="ghost small-btn" id="cdEject">Eject</button>
+      </div>
+      <div class="cd-album">
+        <img id="cdArt" class="cd-art" alt="" hidden><div class="cd-art ph" id="cdArtPh">💿</div>
+        <div class="cd-fields">
+          <label>Artist<input id="cdArtist" autocomplete="off"></label>
+          <label>Album<input id="cdAlbum" autocomplete="off"></label>
+          <div class="muted small" id="cdStatus"></div>
+        </div>
+      </div>
+      <div class="cd-tracks-wrap">
+        <table class="tracks cd-tracks">
+          <thead><tr><th class="c-num"><input type="checkbox" id="cdAll" checked aria-label="Select all"></th><th class="c-num">#</th><th>Title</th><th class="c-time">Length</th></tr></thead>
+          <tbody id="cdBody"></tbody>
+        </table>
+      </div>
+      <label class="check"><input type="checkbox" id="cdName" checked> <span id="cdNameLabel">Name the MiniDisc after the album</span></label>
+      <label class="check"><input type="checkbox" id="cdArtistInTitle"> Put the artist in each track title ("Artist - Song")</label>
+      <menu>
+        <span class="muted small" id="cdSummary"></span>
+        <div class="spacer"></div>
+        <button value="cancel" class="ghost">Cancel</button>
+        <button value="ok" id="cdAdd" class="primary" disabled>Add to queue</button>
+      </menu>
     </form>
   </dialog>
 

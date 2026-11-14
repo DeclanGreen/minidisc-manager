@@ -98,19 +98,19 @@ function renderTracks(canEdit) {
 }
 
 function renderQueue(d, queuedSec, left) {
-  const STATE = { queued: 'Ready', converting: 'Converting…', transferring: 'Sending', done: 'On disc ✓', error: 'Failed', cancelled: 'Cancelled' };
+  const STATE = { queued: 'Ready', ripping: 'Reading CD…', converting: 'Converting…', transferring: 'Sending', done: 'On disc ✓', error: 'Failed', cancelled: 'Cancelled' };
   const list = $('queue');
   // Preserve focus while the user is editing a title.
   const focusId = document.activeElement?.closest?.('#queue li')?.dataset.id;
   if (!focusId) {
     list.innerHTML = S.queue.map((q) => `
-      <li data-id="${q.id}" class="${q.state}" title="${esc(q.error || q.path)}">
+      <li data-id="${q.id}" class="${q.state}" title="${esc(q.error || q.path || q.name)}">
         ${q.art ? `<img class="q-art" src="${q.art}" alt="">` : '<div class="q-art">♪</div>'}
         <div class="q-title" contenteditable="${q.state === 'queued' && !S.uploading}" spellcheck="false">${esc(q.title)}</div>
         <span class="q-time">${fmt(q.seconds)}</span>
         <button class="q-x" title="Remove" ${S.uploading ? 'disabled' : ''}>✕</button>
         <div class="q-file">${esc(q.name)}</div>
-        <div class="q-state">${STATE[q.state]}${q.state === 'transferring' || q.state === 'converting' ? ` ${Math.round((q.pct || 0) * 100)}%` : ''}</div>
+        <div class="q-state">${STATE[q.state]}${q.state === 'transferring' || q.state === 'converting' || q.state === 'ripping' ? ` ${Math.round((q.pct || 0) * 100)}%` : ''}</div>
         <div class="q-prog"></div>
       </li>`).join('');
   }
@@ -300,6 +300,101 @@ $('artRemove').onclick = async () => {
 $('artAuto').onchange = (e) => window.md.setSettings({ onlineArt: e.target.checked });
 ['artArtist', 'artAlbum'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('artSearch').click(); } }));
 
+// ---------- import from CD
+const CD = { info: null };
+const cdTitleFor = (t) => ($('cdArtistInTitle').checked && (t.artist || $('cdArtist').value.trim())
+  ? `${t.artist || $('cdArtist').value.trim()} - ${t.title}` : t.title);
+
+function drawCD() {
+  const info = CD.info;
+  const tracks = info?.tracks || [];
+  $('cdBody').innerHTML = tracks.map((t, i) => `
+    <tr data-i="${i}" class="${t.on ? '' : 'off'}">
+      <td class="c-num"><input type="checkbox" ${t.on ? 'checked' : ''} aria-label="Include track ${t.n}"></td>
+      <td class="c-num">${t.n}</td>
+      <td><input type="text" value="${esc(t.title)}" spellcheck="false"></td>
+      <td class="c-time">${fmt(t.seconds)}</td>
+    </tr>`).join('');
+  $('cdArt').hidden = !info?.art; if (info?.art) $('cdArt').src = info.art;
+  $('cdArtPh').hidden = !!info?.art;
+  cdSummary();
+}
+function cdSummary() {
+  const on = (CD.info?.tracks || []).filter((t) => t.on);
+  const secs = on.reduce((a, t) => a + t.seconds, 0);
+  const left = S.disc?.leftSec;
+  $('cdSummary').textContent = CD.info ? `${on.length} track${on.length === 1 ? '' : 's'} · ${fmt(secs)}` +
+    (left != null ? ` · ${secs <= left ? 'fits' : secs / 2 <= left ? 'fits in LP2' : secs / 4 <= left ? 'fits in LP4' : 'too long for this disc'}` : '') : '';
+  $('cdAdd').disabled = !on.length;
+  $('cdAdd').textContent = on.length ? `Add ${on.length} track${on.length === 1 ? '' : 's'} to queue` : 'Add to queue';
+  $('cdAll').checked = on.length === (CD.info?.tracks || []).length;
+  const name = [$('cdArtist').value.trim(), $('cdAlbum').value.trim()].filter(Boolean).join(' - ');
+  $('cdNameLabel').textContent = name ? `Name the MiniDisc "${name}"` : 'Name the MiniDisc after the album';
+}
+
+async function cdLoad() {
+  const letter = $('cdDrive').value;
+  CD.info = null; drawCD();
+  if (!letter) { $('cdStatus').textContent = 'No CD drive found. Plug in a USB CD drive and click Reload.'; return; }
+  $('cdStatus').textContent = 'Reading the disc and looking it up on MusicBrainz…';
+  try {
+    const info = await window.md.cdRead(letter);
+    info.tracks.forEach((t) => (t.on = true));
+    CD.info = info;
+    const r = info.release;
+    $('cdArtist').value = r?.artist || '';
+    $('cdAlbum').value = r?.title || '';
+    // Compilations: different artists per track, so put the artist in each title by default.
+    $('cdArtistInTitle').checked = !!r && r.tracks.some((t) => t.artist && t.artist !== r.artist);
+    $('cdStatus').textContent = r ? `Found on MusicBrainz${r.date ? ` · ${r.date.slice(0, 4)}` : ''}${r.disc ? ` · disc ${r.disc}` : ''}` : 'Not found on MusicBrainz. Type the names in yourself.';
+  } catch (e) {
+    $('cdStatus').textContent = /No readable audio CD|not ready|error 21/i.test(e.message) ? 'No audio CD in this drive. Insert one and click Reload.' : e.message;
+  }
+  drawCD();
+}
+
+async function cdOpen() {
+  $('cdDrive').innerHTML = '';
+  $('cdStatus').textContent = 'Looking for CD drives…';
+  CD.info = null; drawCD();
+  $('cdName').checked = !!S.disc && !S.disc.tracks.length; // suggest naming blank discs only
+  $('cdDlg').showModal();
+  try {
+    const drives = await window.md.cdDrives();
+    $('cdDrive').innerHTML = drives.map((d) => `<option value="${esc(d.letter)}">${esc(d.letter)}: ${esc(d.label || (d.ready ? 'Audio CD' : 'empty'))}</option>`).join('');
+    const ready = drives.find((d) => d.ready);
+    if (ready) $('cdDrive').value = ready.letter;
+  } catch (e) { $('cdStatus').textContent = e.message; return; }
+  cdLoad();
+}
+$('cdBtn').onclick = cdOpen;
+$('cdReload').onclick = cdOpen;
+$('cdDrive').onchange = cdLoad;
+$('cdEject').onclick = () => $('cdDrive').value && window.md.cdEject($('cdDrive').value).then(() => { CD.info = null; drawCD(); $('cdStatus').textContent = 'Ejected. Insert another CD and click Reload.'; });
+$('cdBody').addEventListener('change', (e) => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const t = CD.info.tracks[+tr.dataset.i];
+  if (e.target.type === 'checkbox') { t.on = e.target.checked; tr.classList.toggle('off', !t.on); cdSummary(); }
+});
+$('cdBody').addEventListener('input', (e) => {
+  const tr = e.target.closest('tr');
+  if (tr && e.target.type === 'text') CD.info.tracks[+tr.dataset.i].title = e.target.value;
+});
+$('cdAll').onchange = (e) => { (CD.info?.tracks || []).forEach((t) => (t.on = e.target.checked)); drawCD(); };
+['cdArtist', 'cdAlbum'].forEach((id) => $(id).addEventListener('input', cdSummary));
+$('cdDlg').addEventListener('close', () => {
+  if ($('cdDlg').returnValue !== 'ok' || !CD.info) return;
+  const artist = $('cdArtist').value.trim(), album = $('cdAlbum').value.trim();
+  const items = CD.info.tracks.filter((t) => t.on).map((t) => ({
+    path: null, name: `CD track ${t.n}${album ? ` · ${album}` : ''}`, title: cdTitleFor(t), seconds: t.seconds,
+    artist, album, art: CD.info.art, cd: { drive: CD.info.drive, n: t.n, lba: t.lba, sectors: t.sectors },
+  }));
+  if ($('cdName').checked && (artist || album)) S.pendingDiscTitle = [artist, album].filter(Boolean).join(' - ');
+  addFiles(items);
+  setTab('transfer');
+  toast(`Added ${items.length} CD track${items.length === 1 ? '' : 's'} to the queue`);
+});
+
 // ---------- queue
 async function addFiles(files) {
   const added = files.map((f) => ({ ...f, id: nextId++, state: 'queued', pct: 0 }));
@@ -356,8 +451,13 @@ $('sendBtn').onclick = async () => {
   items.forEach((q) => { q.state = 'queued'; q.pct = 0; q.error = null; });
   S.uploading = true; render(`Sending ${items.length} track(s)…`);
   try {
-    const n = await window.md.upload(items.map(({ id, path, title }) => ({ id, path, title })), S.mode);
+    const n = await window.md.upload(items.map(({ id, path, title, cd }) => ({ id, path, title, cd })), S.mode);
     toast(`${n} track${n === 1 ? '' : 's'} added to the disc`);
+    // Imported a CD with "name the MiniDisc" ticked: title the disc after the album.
+    if (n && S.pendingDiscTitle) {
+      try { await window.md.renameDisc(S.pendingDiscTitle); } catch (e) { toast(`Couldn't name the disc: ${e.message}`, true); }
+      S.pendingDiscTitle = null;
+    }
   } catch (e) { toast(e.message, true); }
   S.uploading = false;
   await busy('Reading disc…', refresh);
@@ -367,7 +467,7 @@ window.md.on('upload-progress', ({ id, stage, pct, error }) => {
   const q = S.queue.find((x) => x.id === id); if (!q) return;
   q.state = stage; q.pct = pct ?? q.pct; if (error) q.error = error;
   const cur = S.queue.filter((x) => x.state === 'done').length;
-  render(stage === 'converting' ? `Converting "${q.title}"…` : stage === 'transferring' ? `Sending "${q.title}" · ${Math.round(pct * 100)}%` : `Sent ${cur} track(s)`);
+  render(stage === 'ripping' ? `Reading "${q.title}" from CD · ${Math.round(pct * 100)}%` : stage === 'converting' ? `Converting "${q.title}"…` : stage === 'transferring' ? `Sending "${q.title}" · ${Math.round(pct * 100)}%` : `Sent ${cur} track(s)`);
 });
 
 // ---------- log + device events

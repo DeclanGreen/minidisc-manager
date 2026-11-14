@@ -150,8 +150,13 @@ async function encode(file, mode) {
 
 function cleanTitle(t) {
   // MiniDisc titles are half-width (ASCII + katakana). Fold accents, then let netmd-js remap.
-  const folded = t.normalize('NFKD').replace(/[̀-ͯ]/g, '');
-  return sanitizeHalfWidthTitle(folded).slice(0, 120);
+  const folded = t.normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[‘’‚′´`]/g, "'")      // curly/prime apostrophes
+    .replace(/[“”„″]/g, '"')             // curly quotes
+    .replace(/[‐-―−]/g, '-')                  // hyphens and dashes
+    .replace(/…/g, '...')
+    .replace(/[  -​]/g, ' ');
+  return sanitizeHalfWidthTitle(folded).replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 async function probe(file) {
@@ -345,6 +350,7 @@ async function findLyrics({ artist = '', title = '', seconds = 0, force = false,
 
 // ---------- YouTube video search (public results page, no API key) + Spotify album links
 const { youtubeSearch } = require('./lib/youtube');
+const cd = require('./lib/cd');
 const linkCache = new Map(); // in-memory for the session
 
 async function spotifyAlbum({ mbid, artist, album }) {
@@ -433,7 +439,34 @@ handle('open-external', (url) => {
 });
 handle('cancel-upload', () => { cancelRequested = true; log('Cancelling after the current track…'); });
 
-// items: [{id, path, title}], mode: 'SP' | 'LP2' | 'LP4'
+// ---------- audio CD import
+const CD_BIN = () => path.join(app.getPath('userData'), 'bin');
+handle('cd-drives', () => cd.drives(CD_BIN()));
+handle('cd-eject', (letter) => cd.eject(CD_BIN(), letter));
+// Read the CD's table of contents and look it up on MusicBrainz for names and cover art.
+handle('cd-read', async (letter) => {
+  const t = await cd.toc(CD_BIN(), letter);
+  const tracks = cd.audioTracks(t);
+  if (!tracks.length) throw new Error('This disc has no audio tracks.');
+  let release = null, art = null;
+  try {
+    ({ release } = await cd.lookup(t, mbFetch));
+    if (release) {
+      const r = await fetch(`https://coverartarchive.org/release/${release.id}/front-250`, { headers: { 'User-Agent': UA() }, signal: AbortSignal.timeout(10000) });
+      if (r.ok) art = thumb(Buffer.from(await r.arrayBuffer()), 250);
+    }
+  } catch (e) { log(`CD lookup: ${e.message}`); }
+  log(release ? `CD recognised: ${release.artist} – ${release.title}` : 'CD not found on MusicBrainz; using track numbers');
+  return {
+    drive: letter, release, art,
+    tracks: tracks.map((tr) => {
+      const named = release && release.tracks.find((x) => x.n === tr.n);
+      return { n: tr.n, lba: tr.lba, sectors: tr.sectors, seconds: tr.sectors / 75, title: named ? named.title : `Track ${String(tr.n).padStart(2, '0')}`, artist: named ? named.artist : '' };
+    }),
+  };
+});
+
+// items: [{id, path, title, cd?}], mode: 'SP' | 'LP2' | 'LP4'
 handle('upload', (items, mode) => exclusive(async () => {
   const md = requireDevice();
   cancelRequested = false;
@@ -443,10 +476,23 @@ handle('upload', (items, mode) => exclusive(async () => {
   try {
     for (const item of items) {
       if (cancelRequested) { send('upload-progress', { id: item.id, stage: 'cancelled' }); continue; }
+      let ripped = null;
       try {
+        let source = item.path;
+        if (item.cd) {
+          // Read the track off the audio CD into a temporary WAV first.
+          send('upload-progress', { id: item.id, stage: 'ripping', pct: 0 });
+          log(`Reading CD track ${item.cd.n} from drive ${item.cd.drive}:`);
+          ripped = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mdm-cd-')), 'track.wav');
+          const { badSectors } = await cd.rip(CD_BIN(), item.cd.drive, item.cd.lba, item.cd.sectors, ripped,
+            (pct) => send('upload-progress', { id: item.id, stage: 'ripping', pct }));
+          if (badSectors) log(`Warning: ${badSectors} unreadable sector(s) on CD track ${item.cd.n} were replaced with silence (scratched disc?)`);
+          source = ripped;
+        }
         send('upload-progress', { id: item.id, stage: 'converting', pct: 0 });
         log(`Converting "${item.title}" to ${mode}`);
-        const { data, format } = await encode(item.path, mode);
+        const { data, format } = await encode(source, mode);
+        if (ripped) { fs.rmSync(path.dirname(ripped), { recursive: true, force: true }); ripped = null; }
         const title = cleanTitle(item.title);
         const track = new netmd.MDTrack(title, format, data, 0x400, '', encryptor);
         log(`Transferring "${title}"`);
@@ -459,6 +505,8 @@ handle('upload', (items, mode) => exclusive(async () => {
         log(`Failed "${item.title}": ${err.message}`);
         send('upload-progress', { id: item.id, stage: 'error', error: err.message });
         if (!iface) break; // device gone
+      } finally {
+        if (ripped) fs.rmSync(path.dirname(ripped), { recursive: true, force: true });
       }
     }
   } finally {
