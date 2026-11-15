@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win",
-    "dist:mac": "electron-builder --mac"
+    "dist:mac": "electron-builder --mac --publish never"
   },
   "author": "RetroDisc",
   "license": "GPL-2.0-or-later",
@@ -69,6 +69,7 @@
       "category": "public.app-category.music",
       "icon": "build/icon.png",
       "identity": "-",
+      "hardenedRuntime": false,
       "artifactName": "RetroDisc-${version}-mac-${arch}.${ext}"
     },
     "nsis": {
