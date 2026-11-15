@@ -1,4 +1,4 @@
-// MiniDisc Manager — renderer (UI only; all device work goes through window.md)
+// RetroDisc — renderer (UI only; all device work goes through window.md)
 const $ = (id) => document.getElementById(id);
 const S = {
   connected: false, name: '', disc: null, sel: new Set(), anchor: null,

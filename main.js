@@ -1,4 +1,4 @@
-// MiniDisc Manager — Electron main process.
+// RetroDisc — Electron main process.
 // Owns the USB connection to the NetMD player (via netmd-js + node-usb) and
 // all audio conversion (ffmpeg for decoding, atracdenc for LP2/LP4 encoding).
 const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, session } = require('electron');
@@ -191,7 +191,7 @@ async function probe(file) {
 // ---------- album art (MusicBrainz + Cover Art Archive, cached on disk)
 const ART_DIR = () => path.join(app.getPath('userData'), 'art');
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
-const UA = () => `MiniDiscManager/${app.getVersion()} (desktop app)`;
+const UA = () => `RetroDisc/${app.getVersion()} (desktop app)`;
 let settings = null;
 let artIndex = null;
 
@@ -596,7 +596,7 @@ handle('upload', (items, mode) => exclusive(async () => {
 function createWindow() {
   win = new BrowserWindow({
     width: 1180, height: 780, minWidth: 900, minHeight: 600,
-    backgroundColor: '#14161c', title: 'MiniDisc Manager', autoHideMenuBar: true,
+    backgroundColor: '#14161c', title: 'RetroDisc', autoHideMenuBar: true,
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
@@ -625,6 +625,18 @@ function startupLog(msg) {
 }
 app.on('child-process-gone', (_e, d) => startupLog(`child process gone: ${d.type} ${d.reason} (${d.exitCode})`));
 
+// The app used to be called "MiniDisc Manager". Carry its cached art, lyrics fixes and settings over once.
+try {
+  const oldDir = path.join(app.getPath('appData'), 'MiniDisc Manager');
+  const newDir = app.getPath('userData');
+  if (oldDir !== newDir && fs.existsSync(oldDir)) {
+    for (const name of ['art', 'bin', 'settings.json', 'lyrics.json']) {
+      const from = path.join(oldDir, name), to = path.join(newDir, name);
+      if (fs.existsSync(from) && !fs.existsSync(to)) fs.cpSync(from, to, { recursive: true });
+    }
+  }
+} catch (e) { startupLog(`couldn't copy old settings: ${e.message}`); }
+
 // One copy at a time: a second launch just brings the existing window forward (only one process can hold the player).
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
@@ -633,7 +645,7 @@ app.whenReady().then(() => {
   // YouTube embeds refuse to play without a referrer (error 153), and file:// pages send none.
   session.defaultSession.webRequest.onBeforeSendHeaders(
     { urls: ['https://www.youtube-nocookie.com/*', 'https://www.youtube.com/*'] },
-    (d, cb) => { d.requestHeaders.Referer = d.requestHeaders.Referer || 'https://minidisc-manager.app/'; cb({ requestHeaders: d.requestHeaders }); },
+    (d, cb) => { d.requestHeaders.Referer = d.requestHeaders.Referer || 'https://github.com/DeclanGreen/retrodisc'; cb({ requestHeaders: d.requestHeaders }); },
   );
   createWindow();
 });

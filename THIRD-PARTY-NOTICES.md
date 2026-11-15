@@ -1,6 +1,6 @@
 # Third-party notices
 
-MiniDisc Manager is free software, licensed under the GNU General Public License v2.0 or later (see `LICENSE`). Its full source code is in this repository.
+RetroDisc is free software, licensed under the GNU General Public License v2.0 or later (see `LICENSE`). Its full source code is in this repository.
 
 The Windows installer bundles the third-party software listed below. Each component keeps its own licence. In an installed copy, the licence files are under `resources\app\node_modules\<package>\`, `resources\bin\` and the install folder itself.
 

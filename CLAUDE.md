@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 ## Overview
-MiniDisc Manager: an Electron desktop app for Sony NetMD players (the user's player is a Sony MZ-N707 with the WinUSB driver installed). Run it with `npm start`. See README.md for the feature list.
+RetroDisc: an Electron desktop app for Sony NetMD players (the user's player is a Sony MZ-N707 with the WinUSB driver installed). Run it with `npm start`. See README.md for the feature list.
 
 ## Layout
 - `main.js`: Electron main process. Handles NetMD over USB (netmd-js + node-usb WebUSB), audio conversion (ffmpeg-static, plus optional `bin/atracdenc.exe` for LP2/LP4), album art and lyrics lookups, and IPC.
@@ -13,8 +13,8 @@ MiniDisc Manager: an Electron desktop app for Sony NetMD players (the user's pla
 - Device access is serialised through `exclusive()`, because NetMD handles one command at a time. Only one process can hold the player, so close the app before running standalone USB tests.
 
 ## Version control
-- Remote: `origin` → https://github.com/DeclanGreen/minidisc-manager (**private**, made private again on 15 Nov 2026 at the user's request), branch `main`. Ask before making it public again.
-- Releases: bump `version` in package.json, run `npm run dist` (with `bin/atracdenc.exe` present), then `gh release create vX.Y.Z dist/MiniDisc-Manager-Setup-X.Y.Z.exe`. Ask the user before publishing a release.
+- Remote: `origin` → https://github.com/DeclanGreen/retrodisc (**private**, made private again on 15 Nov 2026 at the user's request), branch `main`. Ask before making it public again.
+- Releases: bump `version` in package.json, run `npm run dist` (with `bin/atracdenc.exe` present), then `gh release create vX.Y.Z dist/RetroDisc-Setup-X.Y.Z.exe`. Ask the user before publishing a release.
 - Commit after each self-contained change with a short imperative subject, then push right away.
 - `gh` is not on PATH. Call it as `"/c/Program Files/GitHub CLI/gh.exe"` from Git Bash.
 

@@ -1,4 +1,4 @@
-// cdrip — tiny Windows audio-CD reader for MiniDisc Manager.
+// cdrip — tiny Windows audio-CD reader for RetroDisc.
 // Compiled on first use with the C# compiler that ships with Windows (.NET Framework).
 //
 //   cdrip drives                         -> JSON list of CD drives

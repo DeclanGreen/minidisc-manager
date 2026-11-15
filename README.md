@@ -1,4 +1,4 @@
-# MiniDisc Manager
+# RetroDisc
 
 A free Windows desktop app for Sony **NetMD** MiniDisc players (the USB "Net MD" Walkmans and decks from about 2001–2005, such as the MZ-N505, MZ-N707, MZ-N710, MZ-N10 and MZ-N1). Plug the player in over USB to:
 
@@ -20,10 +20,10 @@ It's built on [netmd-js](https://github.com/cybercase/netmd-js), the open-source
 
 You need Windows 10 or 11 (64-bit) and a NetMD player with its USB cable.
 
-1. **Download the installer.** Go to the [Releases page](https://github.com/DeclanGreen/minidisc-manager/releases), open the latest release and download `MiniDisc-Manager-Setup-x.y.z.exe`.
+1. **Download the installer.** Go to the [Releases page](https://github.com/DeclanGreen/retrodisc/releases), open the latest release and download `RetroDisc-Setup-x.y.z.exe`.
 2. **Run it.** Windows will probably show a blue **"Windows protected your PC"** warning, because the installer isn't signed with a paid certificate. Click **More info**, then **Run anyway**. Choose where to install, and it adds Start menu and desktop shortcuts.
 3. **Install the USB driver** (once per PC). See the next section.
-4. **Open MiniDisc Manager**, plug in the player with a disc inserted, and click **Connect player**.
+4. **Open RetroDisc**, plug in the player with a disc inserted, and click **Connect player**.
 
 LP2 and LP4 work straight away, because the installer includes the encoder they need.
 
@@ -96,4 +96,4 @@ This creates a Windows installer in `dist\`. If `bin\atracdenc.exe` is there, it
 
 ## Licence
 
-MiniDisc Manager is free software under the GNU General Public License v2.0 or later (see [LICENSE](LICENSE)), matching netmd-js. The installer bundles FFmpeg (GPL-3.0), atracdenc (LGPL-2.1), Electron (MIT) and other open-source components. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for their licences and source code links.
+RetroDisc is free software under the GNU General Public License v2.0 or later (see [LICENSE](LICENSE)), matching netmd-js. The installer bundles FFmpeg (GPL-3.0), atracdenc (LGPL-2.1), Electron (MIT) and other open-source components. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for their licences and source code links.
