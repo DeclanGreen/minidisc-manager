@@ -59,6 +59,10 @@ a { color: var(--accent); }
 .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 .badge { font: 600 .82rem/1 var(--f-body); padding: 9px 12px; border: 1px solid var(--line); background: var(--panel); border-radius: 4px; }
 .badge.mac { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+.cta { display: inline-block; margin-top: 22px; padding: 13px 22px; background: var(--accent); color: var(--accent-ink); font: 600 1rem/1 var(--f-body); border-radius: 4px; text-decoration: none; }
+.cta:hover { filter: brightness(1.08); }
+.cta:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+.cta-note { margin-top: 10px; color: var(--muted); font-size: .88rem; }
 .device { min-width: 0; }
 .device svg { display: block; width: 100%; height: auto; max-width: 380px; margin-inline: auto; }
 .lcd {
@@ -120,6 +124,8 @@ footer { padding-block: 30px 44px; border-top: 1px solid var(--line); color: var
         <span class="badge">Windows 10 and 11</span>
         <span class="badge mac">Mac: runs, but untested</span>
       </div>
+      <a class="cta" href="https://github.com/DeclanGreen/retrodisc/releases/latest" target="_blank" rel="noopener">Download RetroDisc</a>
+      <p class="cta-note">Windows installer, plus Mac disk images for Apple Silicon and Intel. Free, on GitHub.</p>
     </div>
     <div class="device" aria-hidden="true">
       <svg viewBox="0 0 300 300" role="img" aria-label="A MiniDisc cartridge">
@@ -212,7 +218,7 @@ footer { padding-block: 30px 44px; border-top: 1px solid var(--line); color: var
     <div class="sec-head">
       <div class="eyebrow">Ready to post</div>
       <h2>Facebook post</h2>
-      <p>Copy this and paste it into a new post. Add the download link where it says.</p>
+      <p>Copy this and paste it into a new post. The download link is already in it.</p>
     </div>
     <div class="post">
       <pre id="postText">💿 RetroDisc: a free app for your Sony NetMD MiniDisc player
@@ -230,7 +236,7 @@ Put your music on MiniDisc from your computer. Plug the player in over USB and y
 
 Runs on Windows 10 and 11 (tested with a Sony MZ-N707). There is also a Mac version for Apple Silicon and Intel, but it hasn't been tested on a real Mac yet, so tell me how you get on.
 
-Download: [add your link here]
+Download (Windows and Mac): https://github.com/DeclanGreen/retrodisc/releases/latest
 
 #MiniDisc #NetMD #Sony #RetroTech #Walkman</pre>
       <button class="copy" id="copyBtn" type="button">Copy post text</button>
