@@ -63,6 +63,8 @@ function render(busyLabel) {
     : !d ? 'Insert a disc into the player.'
     : `${d.tracks.length} track${d.tracks.length === 1 ? '' : 's'} · ${fmt(d.totalSec)} disc` + (d.writeProtected ? ' · write-protected (slide the tab to record)' : '');
   $('eraseBtn').disabled = !canEdit || !d.tracks.length;
+  $('exportBtn').disabled = !d || S.busy || S.uploading;
+  $('importBtn').disabled = !canEdit;
   $('deleteBtn').disabled = !canEdit || !S.sel.size;
   $('deleteBtn').textContent = S.sel.size > 1 ? `Delete ${S.sel.size} tracks` : 'Delete selected';
 
@@ -236,6 +238,67 @@ function deleteSelected() {
   busy('Deleting…', async () => { await window.md.deleteTracks([...S.sel]); S.sel.clear(); await refresh(); toast(`Deleted ${n} track${n > 1 ? 's' : ''}`); });
 }
 $('deleteBtn').onclick = deleteSelected;
+
+// ---------- export / import the track list (CSV; track 0 is the disc title)
+const csvCell = (v) => (/[",\r\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  text = text.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); cell = ''; rows.push(row); row = [];
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+$('exportBtn').onclick = async () => {
+  const d = S.disc; if (!d) return;
+  const lines = [['Track', 'Title', 'Mode', 'Length'].join(',')];
+  lines.push(['0', csvCell(d.title || ''), '', csvCell(fmt(d.totalSec))].join(','));
+  d.tracks.forEach((t) => lines.push([t.index + 1, csvCell(t.title || ''), t.encoding + (t.mono ? ' mono' : ''), fmt(t.seconds)].join(',')));
+  try {
+    const where = await window.md.saveText(`${(d.title || 'MiniDisc').replace(/[\\/:*?"<>|]/g, '_')}.csv`, '﻿' + lines.join('\r\n') + '\r\n');
+    if (where) toast(`Saved ${d.tracks.length} track${d.tracks.length === 1 ? '' : 's'} to ${where}`);
+  } catch (e) { toast(e.message, true); }
+};
+$('importBtn').onclick = async () => {
+  const d = S.disc; if (!d) return;
+  let text;
+  try { text = await window.md.openText(); } catch (e) { return toast(e.message, true); }
+  if (text == null) return;
+  const rows = parseCSV(text);
+  const header = (rows[0] || []).map((x) => x.trim().toLowerCase());
+  const ti = header.indexOf('title'), ni = header.indexOf('track');
+  if (ti < 0 || ni < 0) return toast('That file needs "Track" and "Title" columns (use Export list to see the format)', true);
+  let discTitle = null; const renames = []; let skipped = 0;
+  for (const r of rows.slice(1)) {
+    const n = parseInt(r[ni], 10), title = (r[ti] ?? '').trim();
+    if (!Number.isInteger(n)) continue;
+    if (n === 0) { if (title !== (d.title || '')) discTitle = title; continue; }
+    const t = d.tracks[n - 1];
+    if (!t) { skipped++; continue; }
+    if (title && title !== t.title) renames.push({ index: t.index, from: t.title, title });
+  }
+  if (discTitle == null && !renames.length) return toast(skipped ? `No changes (${skipped} row${skipped === 1 ? '' : 's'} didn't match a track on this disc)` : 'No changes: the titles already match the disc');
+  const parts = [];
+  if (discTitle != null) parts.push(`rename the disc to "${discTitle}"`);
+  if (renames.length) parts.push(`rename ${renames.length} track${renames.length === 1 ? '' : 's'}`);
+  const sample = renames.slice(0, 5).map((x) => `  ${x.index + 1}. ${x.from || 'No title'}  →  ${x.title}`).join('\n');
+  if (!confirm(`This will ${parts.join(' and ')}:\n\n${sample}${renames.length > 5 ? `\n  …and ${renames.length - 5} more` : ''}${skipped ? `\n\n${skipped} row${skipped === 1 ? '' : 's'} beyond the end of the disc will be ignored.` : ''}\n\nContinue?`)) return;
+  busy('Importing titles…', async () => {
+    if (discTitle != null) await window.md.renameDisc(discTitle);
+    for (const [i, x] of renames.entries()) { render(`Renaming track ${i + 1} of ${renames.length}…`); await window.md.renameTrack(x.index, x.title); }
+    await refresh();
+    toast(`Updated ${renames.length} track title${renames.length === 1 ? '' : 's'}${discTitle != null ? ' and the disc title' : ''}`);
+  });
+};
 document.addEventListener('keydown', (e) => {
   if (e.target.closest('input, [contenteditable="true"], dialog')) return;
   if (e.key === 'Delete') deleteSelected();

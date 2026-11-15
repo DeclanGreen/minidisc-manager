@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('md', {
   eraseDisc: () => call('erase-disc'),
   transport: (a) => call('transport', a),
   pickFiles: () => call('pick-files'),
+  saveText: (name, text) => call('save-text', name, text),
+  openText: () => call('open-text'),
   probeFiles: (paths) => call('probe-files', paths),
   pathForFile: (f) => webUtils.getPathForFile(f),
   getArt: (title, opts) => call('get-art', title, opts),

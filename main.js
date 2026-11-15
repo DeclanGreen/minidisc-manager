@@ -425,6 +425,21 @@ handle('pick-files', async () => {
 });
 handle('probe-files', (paths) => Promise.all(paths.map(probe)));
 
+handle('save-text', async (suggested, text) => {
+  const r = await dialog.showSaveDialog(win, { title: 'Export track list', defaultPath: path.join(app.getPath('documents'), suggested), filters: [{ name: 'CSV', extensions: ['csv'] }] });
+  if (r.canceled || !r.filePath) return null;
+  fs.writeFileSync(r.filePath, text, 'utf8');
+  log(`Exported track list to ${r.filePath}`);
+  return r.filePath;
+});
+handle('open-text', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Import track titles', properties: ['openFile'], filters: [{ name: 'CSV / text', extensions: ['csv', 'txt'] }] });
+  if (r.canceled) return null;
+  const st = fs.statSync(r.filePaths[0]);
+  if (st.size > 1024 * 1024) throw new Error('That file is too big to be a track list.');
+  return fs.readFileSync(r.filePaths[0], 'utf8');
+});
+
 handle('get-art', (title, opts) => getArt(title, opts));
 handle('choose-art', async (title) => {
   const r = await dialog.showOpenDialog(win, { title: 'Choose cover image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }] });
