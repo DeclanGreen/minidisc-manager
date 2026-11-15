@@ -122,6 +122,8 @@ function renderQueue(d, queuedSec, left) {
   const pending = S.queue.filter((q) => q.state === 'queued' || q.state === 'error');
   $('queueInfo').textContent = S.queue.length ? `${pending.length} to send · ${fmt(queuedSec)} in ${S.mode}` : 'Queue is empty';
   $('clearBtn').disabled = !S.queue.length || S.uploading;
+  ['tidyBtn', 'sortBtn', 'numBtn'].forEach((id) => ($(id).disabled = !S.queue.some((q) => q.state === 'queued') || S.uploading));
+  $('fitBtn').disabled = !d || !pending.length || S.uploading;
   $('cancelBtn').classList.toggle('hidden', !S.uploading);
   $('sendBtn').classList.toggle('hidden', S.uploading);
   $('sendBtn').disabled = !pending.length || !d || !d.writable || d.writeProtected || S.busy || (S.mode !== 'SP' && !S.atracdenc);
@@ -441,6 +443,77 @@ queueEl.addEventListener('focusout', (e) => {
 queueEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.classList.contains('q-title')) { e.preventDefault(); e.target.blur(); } });
 
 $('clearBtn').onclick = () => { S.queue = []; render(); };
+
+// ---------- bulk tools (only touch tracks that haven't been sent yet)
+const editable = (q) => q.state === 'queued' || q.state === 'error';
+const SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'vs', 'with']);
+function titleCase(s) {
+  // Only fix titles that are ALL lower or ALL upper case; leave deliberate mixed case alone.
+  if (s !== s.toLowerCase() && s !== s.toUpperCase()) return s;
+  return s.toLowerCase().replace(/(^|[\s(\-–/"])([a-zà-ÿ])([a-zà-ÿ']*)/g,(m, pre, first, rest, off) => {
+    const word = first + rest;
+    return pre + (off > 0 && SMALL_WORDS.has(word) ? word : first.toUpperCase() + rest);
+  });
+}
+function tidyTitle(t) {
+  let s = String(t).replace(/_/g, ' ');
+  s = s.replace(/^\s*\d{1,3}\s*[-.)_]\s+/, '');                                   // "01 - ", "01. "
+  s = s.replace(/\s*[(\[](official\s*(music\s*)?(video|audio)|lyrics?(\s*video)?|audio|hd|hq|4k|remaster(ed)?(\s*\d{4})?|visuali[sz]er)[)\]]/gi, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  return titleCase(s) || t;
+}
+function bulk(fn, msg) {
+  if (S.uploading) return;
+  const items = S.queue.filter((q) => q.state === 'queued');
+  if (!items.length) return toast('Nothing in the queue to change', true);
+  const n = fn(items);
+  render();
+  if (msg) toast(typeof msg === 'function' ? msg(n) : msg);
+}
+$('tidyBtn').onclick = () => bulk((items) => {
+  let n = 0;
+  items.forEach((q) => { const t = tidyTitle(q.title); if (t !== q.title) { q.title = t; n++; } });
+  return n;
+}, (n) => (n ? `Tidied ${n} title${n === 1 ? '' : 's'}` : 'Titles already look tidy'));
+let sortDesc = false;
+$('sortBtn').onclick = () => {
+  if (S.uploading) return;
+  const dir = sortDesc ? -1 : 1;
+  const cmp = (x, y) => dir * x.title.localeCompare(y.title, undefined, { numeric: true, sensitivity: 'base' });
+  // Sort only the unsent tracks, keeping them in the slots they occupy now.
+  const slots = S.queue.map((q, i) => (q.state === 'queued' ? i : -1)).filter((i) => i >= 0);
+  const sorted = slots.map((i) => S.queue[i]).sort(cmp);
+  slots.forEach((i, k) => (S.queue[i] = sorted[k]));
+  toast(sortDesc ? 'Sorted Z–A' : 'Sorted A–Z');
+  sortDesc = !sortDesc; $('sortBtn').textContent = sortDesc ? 'Sort Z–A' : 'Sort A–Z';
+  render();
+};
+$('numBtn').onclick = () => bulk((items) => {
+  const stripped = items.map((q) => q.title.replace(/^\d{1,3}\s*[-.)]\s+/, ''));
+  const width = Math.max(2, String(items.length).length);
+  items.forEach((q, i) => (q.title = `${String(i + 1).padStart(width, '0')} ${stripped[i]}`));
+  return items.length;
+}, (n) => `Numbered ${n} track${n === 1 ? '' : 's'}`);
+$('fitBtn').onclick = () => {
+  if (S.uploading) return;
+  if (!S.disc) return toast('Connect a player with a disc first', true);
+  const pending = S.queue.filter(editable);
+  if (!pending.length) return toast('Nothing in the queue to fit', true);
+  const total = pending.reduce((a, q) => a + q.seconds, 0);
+  const left = S.disc.leftSec;
+  const modes = ['SP', 'LP2', 'LP4'].filter((m) => m === 'SP' || S.atracdenc);
+  const best = modes.find((m) => total / MODE_FACTOR[m] <= left);
+  if (best) { const prev = S.mode; S.mode = best; render(); return toast(best === prev ? `Everything fits in ${best}` : `Switched to ${best}: everything fits`); }
+  // Nothing fits entirely: use the densest available mode and drop tracks from the end.
+  const mode = modes[modes.length - 1];
+  let used = 0; const drop = [];
+  pending.forEach((q) => { const len = q.seconds / MODE_FACTOR[mode]; if (used + len <= left) used += len; else drop.push(q); });
+  const msg = `Even in ${mode} only ${pending.length - drop.length} of ${pending.length} tracks fit (${fmt(left)} free). Switch to ${mode} and remove the last ${drop.length} from the queue?`;
+  if (!confirm(msg)) return;
+  S.mode = mode;
+  S.queue = S.queue.filter((q) => !drop.includes(q));
+  render(); toast(`Removed ${drop.length} track${drop.length === 1 ? '' : 's'} to fit in ${mode}`);
+};
 $('modeSeg').onclick = (e) => { const b = e.target.closest('button'); if (b) { S.mode = b.dataset.mode; render(); } };
 $('cancelBtn').onclick = () => window.md.cancelUpload();
 
