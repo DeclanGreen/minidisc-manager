@@ -1,10 +1,10 @@
 # RetroDisc
 
-A free Windows desktop app for Sony **NetMD** MiniDisc players (the USB "Net MD" Walkmans and decks from about 2001–2005, such as the MZ-N505, MZ-N707, MZ-N710, MZ-N10 and MZ-N1). Plug the player in over USB to:
+A free desktop app for Windows and Mac for Sony **NetMD** MiniDisc players (the USB "Net MD" Walkmans and decks from about 2001–2005, such as the MZ-N505, MZ-N707, MZ-N710, MZ-N10 and MZ-N1). Plug the player in over USB to:
 
 - **Read discs.** See the disc title, track list, recording mode (SP/LP2/LP4) and lengths, plus a capacity bar.
 - **Copy music to the disc.** Drag in MP3s (or FLAC, WAV, M4A, OGG…). The app decodes them and records them as ATRAC in **SP**, **LP2** or **LP4**. Track titles are filled in from the file tags ("Artist - Title"), and you can edit them before sending.
-- **Import from CD** *(experimental, not yet tested with a real CD drive)*. Put an audio CD in your PC's drive (a USB drive is fine) and click **Import from CD…** in the Transfer tab. The app identifies the CD on MusicBrainz, fills in the album, track names and cover art, and lets you choose tracks and edit names. It can also name the MiniDisc after the album. Tracks are read straight from the CD at full quality during the transfer, with no MP3 step in between. If a scratched sector won't read, it's replaced with silence and noted in the Activity log. The CD reader is a small helper built automatically on first use with the C# compiler that comes with Windows.
+- **Import from CD** *(experimental, not yet tested with a real CD drive)*. Put an audio CD in your PC's drive (a USB drive is fine) and click **Import from CD…** in the Transfer tab. The app identifies the CD on MusicBrainz, fills in the album, track names and cover art, and lets you choose tracks and edit names. It can also name the MiniDisc after the album. Tracks are read straight from the CD at full quality during the transfer, with no MP3 step in between. If a scratched sector won't read, it's replaced with silence and noted in the Activity log. The CD reader is a small helper built automatically on first use with the C# compiler that comes with Windows, so **CD import is Windows-only** for now.
 - **Bulk tools.** The Transfer tab has one-click helpers for the queue: **Tidy titles** (strips track numbers, underscores and "(Official Video)" tags, fixes ALL CAPS), **Sort A–Z / Z–A**, **Number** (adds 01, 02, 03…) and **Fit to disc** (picks the best mode that fits, or offers to trim the queue).
 - **Folders and playlists.** Drop a folder (sub-folders included, in name order) or an `.m3u`, `.m3u8` or `.pls` playlist on the Transfer tab, or use **Add folder…** / **Add playlist…**. Every track is queued in order, missing files and web streams are skipped, and the capacity bar and **Fit to disc** work as usual.
 - **Export and import titles.** **Export list…** saves the disc title and track list to a CSV file (a back-up you can open in Excel). Edit the titles there, then use **Import titles…** to rename the disc and tracks to match. Row `0` is the disc title, and rows are matched by track number. You see a summary and confirm before anything is renamed.
@@ -21,7 +21,18 @@ It's built on [netmd-js](https://github.com/cybercase/netmd-js), the open-source
 
 ## Install
 
-You need Windows 10 or 11 (64-bit) and a NetMD player with its USB cable.
+You need a NetMD player with its USB cable, and either Windows 10 or 11 (64-bit) or a Mac running macOS 12 or later (Apple Silicon or Intel).
+
+### Mac
+
+1. **Download the disk image** from the [Releases page](https://github.com/DeclanGreen/retrodisc/releases): `RetroDisc-x.y.z-mac-arm64.dmg` for Apple Silicon (M1 and later) or `RetroDisc-x.y.z-mac-x64.dmg` for Intel Macs.
+2. **Open it and drag RetroDisc into Applications.**
+3. **First launch:** the app isn't signed with a paid Apple certificate, so macOS will refuse a normal double-click. Right-click (or Control-click) RetroDisc, choose **Open**, then **Open** again. If macOS says the app is "damaged", run `xattr -cr /Applications/RetroDisc.app` in Terminal and try again.
+4. **Plug in the player** with a disc inserted and click **Connect player**. No USB driver is needed on a Mac.
+
+LP2/LP4 need the atracdenc encoder, which is built into the Mac download when it could be compiled; if the LP2/LP4 buttons are greyed out, only SP is available. Audio CD import isn't available on the Mac yet.
+
+### Windows
 
 1. **Download the installer.** Go to the [Releases page](https://github.com/DeclanGreen/retrodisc/releases), open the latest release and download `RetroDisc-Setup-x.y.z.exe`.
 2. **Run it.** Windows will probably show a blue **"Windows protected your PC"** warning, because the installer isn't signed with a paid certificate. Click **More info**, then **Run anyway**. Choose where to install, and it adds Start menu and desktop shortcuts.
@@ -43,7 +54,7 @@ This replaces Sony's own driver, so SonicStage won't see the player afterwards. 
 
 ### Tested with
 
-So far it has only been tested with a **Sony MZ-N707** on Windows 11. Other NetMD players should work, because the underlying library (netmd-js) supports them, but haven't been tried with this app. If you try another model, please open an issue saying whether it worked.
+So far it has only been tested with a **Sony MZ-N707** on Windows 11. The Mac build is new and **has not been tested on a real Mac yet**. Other NetMD players should work, because the underlying library (netmd-js) supports them, but haven't been tried with this app. If you try another model, please open an issue saying whether it worked.
 
 ## Build from source
 
@@ -72,6 +83,8 @@ npm run dist
 ```
 
 This creates a Windows installer in `dist\`. If `bin\atracdenc.exe` is there, it's bundled in.
+
+The Mac app can only be built on a Mac: run `npm run dist:mac` there (put an `atracdenc` binary in `bin/` first for LP2/LP4). Or use the **Build macOS app** workflow in GitHub Actions, which does this on GitHub's Mac runners and attaches the `.dmg` files to a release.
 
 ## Tips
 

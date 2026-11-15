@@ -16,10 +16,11 @@ const { sanitizeHalfWidthTitle } = require('netmd-js/dist/utils');
 // In a packaged build, binaries live outside the asar archive.
 const unpacked = (p) => p.replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
 const FFMPEG = unpacked(require('ffmpeg-static'));
+// atracdenc.exe on Windows, a plain `atracdenc` binary on macOS/Linux.
+const ATRACDENC_NAME = process.platform === 'win32' ? 'atracdenc.exe' : 'atracdenc';
 const ATRACDENC_CANDIDATES = [
-  path.join(process.resourcesPath || '', 'bin', 'atracdenc.exe'),
-  path.join(__dirname, 'bin', 'atracdenc.exe'),
-  path.join(__dirname, 'bin', 'atracdenc'),
+  path.join(process.resourcesPath || '', 'bin', ATRACDENC_NAME),
+  path.join(__dirname, 'bin', ATRACDENC_NAME),
 ];
 const findAtracdenc = () => ATRACDENC_CANDIDATES.find((p) => p && fs.existsSync(p)) || null;
 
@@ -144,7 +145,7 @@ async function encode(file, mode) {
     return { data: pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength), format: netmd.Wireformat.pcm };
   }
   const enc = findAtracdenc();
-  if (!enc) throw new Error('LP2/LP4 need atracdenc.exe in the app\'s bin folder (see README).');
+  if (!enc) throw new Error(`LP2/LP4 need ${ATRACDENC_NAME} in the app's bin folder (see README).`);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mdm-'));
   const wav = path.join(tmp, 'in.wav');
   const oma = path.join(tmp, 'out.oma');

@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
   },
   "author": "RetroDisc",
   "license": "GPL-2.0-or-later",
@@ -60,6 +61,15 @@
         }
       ],
       "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "category": "public.app-category.music",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "artifactName": "RetroDisc-${version}-mac-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

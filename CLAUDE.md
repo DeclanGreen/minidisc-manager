@@ -15,6 +15,7 @@ RetroDisc: an Electron desktop app for Sony NetMD players (the user's player is 
 ## Version control
 - Remote: `origin` → https://github.com/DeclanGreen/retrodisc (**private**, made private again on 15 Nov 2026 at the user's request), branch `main`. Ask before making it public again.
 - Releases: bump `version` in package.json, run `npm run dist` (with `bin/atracdenc.exe` present), then `gh release create vX.Y.Z dist/RetroDisc-Setup-X.Y.Z.exe`. Ask the user before publishing a release.
+- Mac: cannot be built on this Windows PC (native `usb` and `ffmpeg-static` binaries are per-platform). `.github/workflows/build-mac.yml` builds the `.dmg` files on a macOS runner and attaches them when a release is published (or run it by hand). The Mac build is ad-hoc signed (`identity: "-"`), not notarized, and has not been tested on real hardware. CD import is Windows-only (`lib/cd.js` needs csc.exe). Pushing workflow files needs the `workflow` scope on the gh token.
 - Commit after each self-contained change with a short imperative subject, then push right away.
 - `gh` is not on PATH. Call it as `"/c/Program Files/GitHub CLI/gh.exe"` from Git Bash.
 

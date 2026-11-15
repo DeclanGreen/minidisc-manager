@@ -1,0 +1,57 @@
+name: Build macOS app
+
+# Builds the Mac disk images (Apple Silicon + Intel). A Mac app can only be built on a Mac,
+# so this runs on GitHub's macOS runners.
+#  - Run it by hand from the Actions tab: the .dmg files appear as a build artifact.
+#  - Publishing a GitHub release attaches the .dmg files to that release automatically.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # LP2/LP4 need the free atracdenc encoder (LGPL-2.1). Build it from source for the Mac.
+      # If this step fails the app still builds and works in SP mode.
+      - name: Build atracdenc
+        id: atracdenc
+        continue-on-error: true
+        run: |
+          brew install cmake
+          git clone --depth 1 --branch 0.2.3 https://github.com/dcherednik/atracdenc.git "$RUNNER_TEMP/atracdenc"
+          cmake -S "$RUNNER_TEMP/atracdenc/src" -B "$RUNNER_TEMP/atracdenc/build" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/atracdenc/build" -j 4
+          mkdir -p bin
+          cp "$RUNNER_TEMP/atracdenc/build/atracdenc" bin/atracdenc
+          chmod +x bin/atracdenc
+          ./bin/atracdenc --help || true
+
+      - name: Build the app
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RetroDisc-mac
+          path: dist/*.dmg
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.dmg --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
