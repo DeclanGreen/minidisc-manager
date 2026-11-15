@@ -425,6 +425,68 @@ handle('pick-files', async () => {
 });
 handle('probe-files', (paths) => Promise.all(paths.map(probe)));
 
+// ---------- folders and playlists (.m3u / .m3u8 / .pls) -> ordered list of audio files
+const AUDIO_RE = /\.(mp3|flac|wav|m4a|aac|ogg|opus|wma|aiff?)$/i;
+const PLAYLIST_RE = /\.(m3u8?|pls)$/i;
+const MAX_FILES = 500;
+const naturalSort = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+function walkAudio(dir, out) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  entries.sort((a, b) => naturalSort(a.name, b.name));
+  // Files in this folder first, then sub-folders (so a "Disc 1/Disc 2" layout stays in order).
+  for (const e of entries) if (e.isFile() && AUDIO_RE.test(e.name)) out.push(path.join(dir, e.name));
+  for (const e of entries) if (e.isDirectory()) walkAudio(path.join(dir, e.name), out);
+}
+
+function readPlaylist(file) {
+  let text = fs.readFileSync(file, 'utf8');
+  if (text.includes('�')) text = fs.readFileSync(file, 'latin1'); // old .m3u files are often ANSI
+  const base = path.dirname(file);
+  const isPls = /\.pls$/i.test(file);
+  const entries = [];
+  for (let line of text.replace(/^﻿/, '').split(/\r?\n/)) {
+    line = line.trim();
+    if (isPls) { const m = /^File\d+=(.+)$/i.exec(line); if (!m) continue; line = m[1].trim(); }
+    else if (!line || line.startsWith('#')) continue;
+    if (/^https?:|^rtsp:|^mms:/i.test(line)) { entries.push({ missing: line }); continue; } // streams can't be recorded
+    if (/^file:\/\//i.test(line)) { try { line = decodeURIComponent(new URL(line).pathname).replace(/^\/([A-Za-z]:)/, '$1'); } catch { /* keep as is */ } }
+    entries.push({ path: path.resolve(base, line.replace(/\\/g, path.sep)) });
+  }
+  return entries;
+}
+
+function expandPaths(inputs) {
+  const files = [], missing = [], seen = new Set();
+  const add = (p) => { const k = p.toLowerCase(); if (!seen.has(k)) { seen.add(k); files.push(p); } };
+  for (const p of inputs) {
+    let st;
+    try { st = fs.statSync(p); } catch { missing.push(p); continue; }
+    if (st.isDirectory()) { const found = []; walkAudio(p, found); found.forEach(add); }
+    else if (PLAYLIST_RE.test(p)) {
+      for (const e of readPlaylist(p)) {
+        if (e.missing) { missing.push(e.missing); continue; }
+        if (AUDIO_RE.test(e.path) && fs.existsSync(e.path)) add(e.path); else missing.push(e.path);
+      }
+    } else if (AUDIO_RE.test(p)) add(p);
+  }
+  return { files: files.slice(0, MAX_FILES), missing, truncated: Math.max(0, files.length - MAX_FILES) };
+}
+
+// kind: 'folder' | 'playlist'
+handle('pick-folder-or-playlist', async (kind) => {
+  const r = await dialog.showOpenDialog(win, kind === 'folder'
+    ? { title: 'Add a folder of music', properties: ['openDirectory'] }
+    : { title: 'Add a playlist', properties: ['openFile'], filters: [{ name: 'Playlists', extensions: ['m3u', 'm3u8', 'pls'] }] });
+  return r.canceled ? null : r.filePaths;
+});
+handle('expand-and-probe', async (paths) => {
+  const { files, missing, truncated } = expandPaths(paths);
+  log(`Expanded ${paths.length} item(s) to ${files.length} file(s)${missing.length ? `, ${missing.length} missing` : ''}`);
+  return { items: await Promise.all(files.map(probe)), missing: missing.length, truncated };
+});
+
 handle('save-text', async (suggested, text) => {
   const r = await dialog.showSaveDialog(win, { title: 'Export track list', defaultPath: path.join(app.getPath('documents'), suggested), filters: [{ name: 'CSV', extensions: ['csv'] }] });
   if (r.canceled || !r.filePath) return null;

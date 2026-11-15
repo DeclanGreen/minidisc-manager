@@ -486,10 +486,26 @@ $('drop').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') $('drop')
 document.addEventListener('drop', async (e) => {
   if (dragFrom != null) return;
   e.preventDefault();
-  const paths = [...e.dataTransfer.files].map((f) => window.md.pathForFile(f)).filter((p) => /\.(mp3|flac|wav|m4a|aac|ogg|opus|wma|aiff?)$/i.test(p));
-  if (!paths.length) return toast('Drop audio files (MP3, FLAC, WAV…)', true);
-  addFiles(await window.md.probeFiles(paths));
+  const paths = [...e.dataTransfer.files].map((f) => window.md.pathForFile(f)).filter(Boolean);
+  if (!paths.length) return toast('Drop audio files, a folder or a playlist', true);
+  addPaths(paths);
 });
+
+// Folders and playlists: main expands them into an ordered list of audio files.
+async function addPaths(paths) {
+  if (!paths?.length) return;
+  try {
+    const { items, missing, truncated } = await window.md.expandAndProbe(paths);
+    if (!items.length) return toast(missing ? `No playable files found (${missing} entr${missing === 1 ? 'y' : 'ies'} missing or not audio)` : 'No audio files found there', true);
+    await addFiles(items);
+    const notes = [];
+    if (missing) notes.push(`${missing} missing/skipped`);
+    if (truncated) notes.push(`${truncated} over the ${items.length}-file limit left out`);
+    toast(`Added ${items.length} track${items.length === 1 ? '' : 's'} to the queue${notes.length ? ` (${notes.join(', ')})` : ''}`, !!truncated);
+  } catch (e) { toast(e.message, true); }
+}
+$('folderBtn').onclick = () => window.md.pickFolderOrPlaylist('folder').then(addPaths).catch((e) => toast(e.message, true));
+$('playlistBtn').onclick = () => window.md.pickFolderOrPlaylist('playlist').then(addPaths).catch((e) => toast(e.message, true));
 
 const queueEl = $('queue');
 queueEl.onclick = (e) => {

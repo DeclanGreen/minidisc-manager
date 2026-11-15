@@ -254,3 +254,5 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 .toast.err { border-color: var(--danger); }
 .bulk-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
 .bulk-bar .muted { margin-right: 2px; }
+.add-row { display: flex; gap: 8px; margin-top: 6px; }
+.add-row .cd-btn { flex: 1; margin-top: 0; }

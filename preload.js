@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('md', {
   saveText: (name, text) => call('save-text', name, text),
   openText: () => call('open-text'),
   probeFiles: (paths) => call('probe-files', paths),
+  pickFolderOrPlaylist: (kind) => call('pick-folder-or-playlist', kind),
+  expandAndProbe: (paths) => call('expand-and-probe', paths),
   pathForFile: (f) => webUtils.getPathForFile(f),
   getArt: (title, opts) => call('get-art', title, opts),
   chooseArt: (title) => call('choose-art', title),

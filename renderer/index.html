@@ -146,9 +146,13 @@
       <div class="drop" id="drop" tabindex="0" role="button">
         <div class="drop-icon">♪</div>
         <div><b>Drop MP3s here</b> or click to browse</div>
-        <div class="muted small">MP3, FLAC, WAV, M4A, OGG… converted automatically</div>
+        <div class="muted small">MP3, FLAC, WAV, M4A, OGG… or a folder or playlist, converted automatically</div>
       </div>
       <button type="button" class="ghost cd-btn" id="cdBtn">💿 Import from CD…</button>
+      <div class="add-row">
+        <button type="button" class="ghost cd-btn" id="folderBtn" title="Queue every audio file in a folder (and its sub-folders), in name order">📁 Add folder…</button>
+        <button type="button" class="ghost cd-btn" id="playlistBtn" title="Queue the tracks of an .m3u, .m3u8 or .pls playlist, in playlist order">📃 Add playlist…</button>
+      </div>
 
       <div class="mode-row">
         <div class="seg" id="modeSeg" role="radiogroup" aria-label="Recording mode">
