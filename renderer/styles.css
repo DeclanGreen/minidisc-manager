@@ -256,3 +256,22 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 .bulk-bar .muted { margin-right: 2px; }
 .add-row { display: flex; gap: 8px; margin-top: 6px; }
 .add-row .cd-btn { flex: 1; margin-top: 0; }
+
+
+/* per-track disc usage: one block per track, scaled to the whole disc, plus a share bar in each row */
+.trackmap-wrap { margin-top: 12px; }
+.trackmap-cap { margin-bottom: 5px; }
+.trackmap { display: flex; height: 30px; border-radius: 7px; overflow: hidden; background: var(--panel-2); border: 1px solid var(--line); }
+.trackmap:empty { display: none; }
+.trackmap .seg { flex: none; min-width: 2px; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #0008; cursor: pointer;
+  border-right: 1px solid var(--panel); overflow: hidden; white-space: nowrap; transition: filter .15s, width .4s; }
+.trackmap .seg:hover { filter: brightness(1.25); }
+.trackmap .seg.sel { outline: 2px solid var(--text); outline-offset: -2px; }
+.trackmap .seg.playing { animation: pulse 1.6s infinite; }
+.trackmap .seg.queued { background: repeating-linear-gradient(45deg, var(--warn) 0 6px, color-mix(in srgb, var(--warn) 60%, transparent) 6px 12px); color: #1b1e26; text-shadow: none; cursor: default; }
+.trackmap .seg.queued.over { background: var(--danger); }
+.trackmap .seg.free { flex: 1; min-width: 0; background: transparent; border-right: 0; cursor: default; color: var(--muted); text-shadow: none; font-weight: 600; }
+.c-share { width: 120px; }
+.share { position: relative; height: 16px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+.share i { position: absolute; left: 0; top: 0; bottom: 0; display: block; }
+.share b { position: relative; display: block; text-align: right; padding: 0 6px; font-size: 10.5px; line-height: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000a; color: #fff; }

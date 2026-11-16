@@ -80,12 +80,52 @@ function render(busyLabel) {
   $('capFreeTxt').textContent = fmt(Math.max(0, left - queuedSec));
   $('capFreeModes').textContent = d ? `≈ ${fmt(left * 2)} in LP2 · ${fmt(left * 4)} in LP4` : '';
 
-  renderTracks(canEdit);
+  const share = trackShares(d);
+  renderTrackMap(d, share, queuedSec, left);
+  renderTracks(canEdit, share);
   renderQueue(d, queuedSec, left);
   syncLyrics();
 }
 
-function renderTracks(canEdit) {
+// How much of the disc each track takes, in disc seconds. A track plays for t.seconds but LP2/LP4 (and mono SP) pack it into a half/quarter of the space, so weight by
+// seconds / compression, then scale so the weights add up to the disc's real used time (that absorbs any rounding or header overhead).
+const TRACK_HUES = [205, 265, 335, 28, 160, 48, 300, 188, 12, 235, 100, 350];
+function trackShares(d) {
+  const out = new Map();
+  if (!d || !d.tracks.length) return out;
+  const w = d.tracks.map((t) => t.seconds / (MODE_FACTOR[t.encoding] || 1) / (t.mono && t.encoding === 'SP' ? 2 : 1));
+  const sum = w.reduce((a, b) => a + b, 0) || 1;
+  const k = d.usedSec > 0 ? d.usedSec / sum : 1;
+  d.tracks.forEach((t, i) => out.set(t.index, { sec: w[i] * k, frac: (w[i] * k) / (d.totalSec || 1), color: `hsl(${TRACK_HUES[t.index % TRACK_HUES.length]} 62% 46%)` }));
+  return out;
+}
+function renderTrackMap(d, share, queuedSec, left) {
+  const map = $('trackMap');
+  map.textContent = '';
+  if (!d || !d.tracks.length) { $('trackMapHint').textContent = ''; return; }
+  const total = d.totalSec || 1;
+  $('trackMapHint').textContent = '· hover a block for details, click to select';
+  const addSeg = (cls, pct, text, tip) => {
+    const s = document.createElement('div');
+    s.className = 'seg ' + cls; s.style.width = `${pct}%`; s.textContent = text; if (tip) s.title = tip;
+    map.appendChild(s); return s;
+  };
+  d.tracks.forEach((t) => {
+    const sh = share.get(t.index); if (!sh) return;
+    const s = addSeg('track' + (S.sel.has(t.index) ? ' sel' : '') + (S.playingTrack === t.index ? ' playing' : ''), sh.frac * 100, sh.frac >= 0.04 ? String(t.index + 1) : '',
+      `${t.index + 1}. ${t.title || 'No title'}\n${fmt(t.seconds)} playing time · ${t.encoding}${t.mono ? ' mono' : ''} · ${(sh.frac * 100).toFixed(1)}% of the disc (${fmt(sh.sec)} of recording space)`);
+    s.style.background = sh.color; s.dataset.i = t.index;
+  });
+  const q = Math.min(queuedSec, left);
+  if (queuedSec > 0) addSeg('queued' + (queuedSec > left ? ' over' : ''), (q / total) * 100, queuedSec / total >= 0.06 ? 'queued' : '', `Queued to send: ${fmt(queuedSec)}${queuedSec > left ? ' — more than the free space' : ''}`);
+  addSeg('free', 0, left - queuedSec >= total * 0.08 ? `${fmt(Math.max(0, left - queuedSec))} free` : '', `Free: ${fmt(Math.max(0, left - queuedSec))}`);
+}
+$('trackMap').onclick = (e) => {
+  const seg = e.target.closest('.seg.track'); if (!seg) return;
+  S.sel = new Set([+seg.dataset.i]); S.anchor = +seg.dataset.i; render();
+};
+
+function renderTracks(canEdit, share = new Map()) {
   const body = $('trackBody');
   const tracks = S.disc?.tracks || [];
   $('trackEmpty').style.display = tracks.length ? 'none' : 'grid';
@@ -95,8 +135,12 @@ function renderTracks(canEdit) {
       <td class="c-num">${t.index + 1}</td>
       <td>${esc(t.title || 'No title')}${t.protected ? '<span class="lock" title="Protected track (recorded via SonicStage/OpenMG)">🔒</span>' : ''}</td>
       <td class="c-mode"><span class="badge ${t.encoding}">${t.encoding}${t.mono ? ' mono' : ''}</span></td>
+      <td class="c-share"><div class="share" title="${((share.get(t.index)?.frac || 0) * 100).toFixed(1)}% of the disc"><i data-i="${t.index}"></i><b>${((share.get(t.index)?.frac || 0) * 100).toFixed(1)}%</b></div></td>
       <td class="c-time">${fmt(t.seconds)}</td>
     </tr>`).join('');
+  // widths and colours via the CSSOM (inline style attributes are blocked by the CSP)
+  const maxFrac = Math.max(0.0001, ...[...share.values()].map((s) => s.frac));
+  body.querySelectorAll('.share i').forEach((el) => { const sh = share.get(+el.dataset.i); if (sh) { el.style.width = `${(sh.frac / maxFrac) * 100}%`; el.style.background = sh.color; } });
 }
 
 function renderQueue(d, queuedSec, left) {

@@ -49,6 +49,10 @@
           <div class="muted" id="discSub">Connect your NetMD player and insert a disc.</div>
           <div class="capacity">
             <div class="cap-bar"><div class="cap-used" id="capUsed"></div><div class="cap-pending" id="capPending"></div></div>
+            <div class="trackmap-wrap">
+              <div class="trackmap-cap muted small">Space taken by each track <span id="trackMapHint"></span></div>
+              <div class="trackmap" id="trackMap" role="img" aria-label="Space taken by each track on the disc"></div>
+            </div>
             <div class="cap-legend">
               <span><i class="sw used"></i>Used <b id="capUsedTxt">0:00</b></span>
               <span><i class="sw pending"></i>Queued <b id="capPendingTxt">0:00</b></span>
@@ -70,7 +74,7 @@
 
       <div class="table-wrap">
         <table class="tracks">
-          <thead><tr><th class="c-num">#</th><th>Title</th><th class="c-mode">Mode</th><th class="c-time">Length</th></tr></thead>
+          <thead><tr><th class="c-num">#</th><th>Title</th><th class="c-mode">Mode</th><th class="c-share">Of disc</th><th class="c-time">Length</th></tr></thead>
           <tbody id="trackBody"></tbody>
         </table>
         <div class="empty" id="trackEmpty">No disc loaded</div>
