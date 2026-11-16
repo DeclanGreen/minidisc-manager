@@ -411,9 +411,10 @@ handle('delete-tracks', (indexes) => exclusive(async () => {
   // Delete from the highest index down so earlier indexes stay valid.
   for (const i of [...indexes].sort((a, b) => b - a)) { await md.eraseTrack(i); log(`Deleted track ${i + 1}`); }
 }));
-handle('transport', (action) => exclusive(async () => {
+handle('transport', (action, track) => exclusive(async () => {
   const md = requireDevice();
-  const fns = { play: () => md.play(), pause: () => md.pause(), stop: () => md.stop(), next: () => md.nextTrack(), prev: () => md.previousTrack() };
+  // Play can start a chosen track: jump to it first (track is the 0-based disc index), then play.
+  const fns = { play: async () => { if (Number.isInteger(track) && track >= 0) await md.gotoTrack(track); await md.play(); }, pause: () => md.pause(), stop: () => md.stop(), next: () => md.nextTrack(), prev: () => md.previousTrack() };
   await fns[action]();
 }));
 

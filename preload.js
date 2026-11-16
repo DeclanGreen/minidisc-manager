@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('md', {
   moveTrack: (from, to) => call('move-track', from, to),
   deleteTracks: (idx) => call('delete-tracks', idx),
   eraseDisc: () => call('erase-disc'),
-  transport: (a) => call('transport', a),
+  transport: (a, track) => call('transport', a, track),
   pickFiles: () => call('pick-files'),
   saveText: (name, text) => call('save-text', name, text),
   printInlay: (data) => call('print-inlay', data),

@@ -113,6 +113,30 @@ function applySpin() {
   const g = document.getElementById('vinylRot');
   if (g) g.setAttribute('transform', `rotate(${SPIN.angle.toFixed(2)} 80 80)`);
 }
+// Tonearm: pivots at the top right of the vinyl graphic. When a track plays it swings onto the record and the stylus drifts inward as the track plays;
+// when playback stops it swings back to its rest. The stylus radius comes from the same bands the grooves are drawn with.
+const ARM = { pivot: [178, 28], len: 100, rest: 98, phi: 98, moving: false, bands: new Map(), secs: new Map() };   // angles in degrees, 0 = pointing right, 90 = pointing down
+function armAngleFor(rho) {                                           // arm angle that puts the stylus at distance rho from the record centre (80, 80)
+  const [px, py] = ARM.pivot, L = ARM.len, dx = 80 - px, dy = 80 - py, d = Math.hypot(dx, dy);
+  const a = (L * L - rho * rho + d * d) / (2 * d), h = Math.sqrt(Math.max(0, L * L - a * a));
+  const mx = px + (a * dx) / d, my = py + (a * dy) / d;
+  const c1 = [mx + (h * dy) / d, my - (h * dx) / d], c2 = [mx - (h * dy) / d, my + (h * dx) / d];
+  const t = c1[1] > c2[1] ? c1 : c2;                                   // the lower of the two: the stylus plays the lower half of the record, as on a real turntable
+  const deg = (Math.atan2(t[1] - py, t[0] - px) * 180) / Math.PI;
+  return deg < 0 ? deg + 360 : deg;                                    // keep it positive so the arm swings smoothly from its rest (98) to about 110-137
+}
+function armTarget() {
+  if (S.playingTrack == null) return ARM.rest;
+  const b = ARM.bands.get(S.playingTrack); if (!b) return ARM.rest;
+  const f = Math.max(0, Math.min(1, (S.pos.track === S.playingTrack ? playerPos() : 0) / (ARM.secs.get(S.playingTrack) || 1)));
+  const rho = Math.max(b.ri + 0.5, b.ro - 1 - f * (b.ro - b.ri - 1.5));
+  return armAngleFor(rho);
+}
+function applyArm() {
+  const g = document.getElementById('tonearm');
+  if (g) g.setAttribute('transform', `translate(${ARM.pivot[0]} ${ARM.pivot[1]}) rotate(${ARM.phi.toFixed(2)})`);
+  if (g) g.classList.toggle('lifted', ARM.moving);                       // a bigger shadow while it is swinging, as if lifted off the record
+}
 function spinFrame(ts) {
   SPIN.raf = 0;
   const dt = SPIN.last ? Math.min(0.1, (ts - SPIN.last) / 1000) : 0; SPIN.last = ts;
@@ -121,7 +145,9 @@ function spinFrame(ts) {
   if (SPIN.speed < 0.4 && !want) SPIN.speed = 0;
   SPIN.angle = (SPIN.angle + SPIN.speed * dt) % 360;
   applySpin();
-  if (SPIN.speed > 0 || want) SPIN.raf = requestAnimationFrame(spinFrame); else SPIN.last = 0;
+  let armMoving = false;
+  if (pieStyle === 'vinyl') { const tgt = armTarget(); armMoving = Math.abs(tgt - ARM.phi) > 0.05; ARM.moving = armMoving && Math.abs(tgt - ARM.phi) > 0.6; ARM.phi = armMoving ? ARM.phi + (tgt - ARM.phi) * Math.min(1, dt * 2.4) : tgt; applyArm(); }
+  if (SPIN.speed > 0 || want || armMoving) SPIN.raf = requestAnimationFrame(spinFrame); else SPIN.last = 0;
 }
 function kickSpin() { if (!SPIN.raf) SPIN.raf = requestAnimationFrame(spinFrame); }
 // Two looks for the disc graphic: the MiniDisc ring ('md') or an old vinyl record ('vinyl'). Remembered between runs.
@@ -138,6 +164,7 @@ function renderTrackMap(d, share, queuedSec, left) {
   const map = $('trackMap');
   map.textContent = '';
   map.classList.toggle('hidden', !d);
+  map.classList.toggle('wide', pieStyle === 'vinyl');
   if (!d) return;
   const total = d.totalSec || 1, C = 80, R = 74, r = 31;               // centre, outer radius of the data ring, radius of the hub hole
   let target = null;
@@ -151,39 +178,66 @@ function renderTrackMap(d, share, queuedSec, left) {
   };
   if (pieStyle === 'vinyl') {
     // An old 12-inch record: black, finely grooved, tracks as concentric bands from the outside in (the way a record is played), the unrecorded part is bare groove near the label.
-    const rot = document.createElementNS(SVGNS, 'g'); rot.setAttribute('id', 'vinylRot'); svg.appendChild(rot); target = rot;   // everything but the text spins
-    const G0 = 77, G1 = 29, span = G0 - G1;                             // groove zone from radius 77 in to 29
+    svg.setAttribute('viewBox', '0 0 200 160');                         // extra room on the right for the tonearm
+    const recG = document.createElementNS(SVGNS, 'g'); svg.appendChild(recG);
+    const rot = document.createElementNS(SVGNS, 'g'); rot.setAttribute('id', 'vinylRot'); recG.appendChild(rot); target = rot;   // everything but the text spins
+    const G0 = 77, G1 = 27, span = G0 - G1;                             // groove zone from radius 77 in to 29
     const ring = (ra, rb) => `M${C - ra} ${C}A${ra} ${ra} 0 1 0 ${C + ra} ${C}A${ra} ${ra} 0 1 0 ${C - ra} ${C}ZM${C - rb} ${C}A${rb} ${rb} 0 1 1 ${C + rb} ${C}A${rb} ${rb} 0 1 1 ${C - rb} ${C}Z`;
     el('circle', { cx: C, cy: C, r: 79, fill: '#0b0b0e', stroke: '#2a2d37', 'stroke-width': 1 });
-    // Plain black vinyl. Like a real record, only the thin smooth gaps between tracks show, placed by how much of the disc each track takes (outside in).
-    let ro = G0;
+    // Plain black vinyl. Like a real record, the smooth shiny gaps between tracks show (so you can see which band the stylus is in), placed by how much of the disc each track takes (outside in).
+    // Like a real record, the music is cut across the whole groove area (the free space is not drawn), so the stylus travels from the rim to the label over the whole disc.
+    const usedTotal = d.tracks.reduce((a, t) => a + (share.get(t.index)?.sec || 0), 0) || 1;
+    let ro = G0; ARM.bands = new Map(); ARM.secs = new Map();
     d.tracks.forEach((t, i) => {
       const sh = share.get(t.index); if (!sh || sh.frac <= 0) return;
-      ro = Math.max(G1, ro - sh.frac * span);
+      const roPrev = ro;
+      ro = Math.max(G1, ro - (sh.sec / usedTotal) * span);
+      ARM.bands.set(t.index, { ro: roPrev, ri: ro }); ARM.secs.set(t.index, t.seconds);
       if (i < d.tracks.length - 1 && ro > G1 + 1) {
-        el('circle', { cx: C, cy: C, r: ro, fill: 'none', stroke: '#000', 'stroke-width': 0.9, 'pointer-events': 'none' });
-        el('circle', { cx: C, cy: C, r: ro - 0.6, fill: 'none', stroke: '#fff', 'stroke-opacity': 0.1, 'stroke-width': 0.25, 'pointer-events': 'none' });
+        el('circle', { cx: C, cy: C, r: ro, fill: 'none', stroke: '#000', 'stroke-width': 1.6, 'pointer-events': 'none' });
+        el('circle', { cx: C, cy: C, r: ro, fill: 'none', stroke: '#fff', 'stroke-opacity': 0.3, 'stroke-width': 0.45, 'pointer-events': 'none' });
       }
     });
     for (let g = G0; g >= G1; g -= 1.5) el('circle', { cx: C, cy: C, r: g, fill: 'none', stroke: '#fff', 'stroke-opacity': g % 3 === 0 ? 0.05 : 0.025, 'stroke-width': 0.35, 'pointer-events': 'none' });
-    for (const [a0, a1] of [[0.07, 0.17], [0.57, 0.67]]) {              // two soft light reflections, like a record under a lamp
-      const [x0, y0] = pt(77, a0), [x1, y1] = pt(77, a1), [x2, y2] = pt(G1, a1), [x3, y3] = pt(G1, a0);
-      el('path', { d: `M${x0} ${y0}A77 77 0 0 1 ${x1} ${y1}L${x2} ${y2}A${G1} ${G1} 0 0 0 ${x3} ${y3}Z`, fill: '#fff', 'fill-opacity': 0.06, 'pointer-events': 'none' });
+    // fine dust and a faint scuff, so the turning of the record can be seen (they spin with it)
+    for (const [rr, an, ln] of [[66, 0.12, 0.012], [58, 0.31, 0.02], [49, 0.47, 0.01], [41, 0.66, 0.018], [62, 0.78, 0.014], [35, 0.9, 0.012], [71, 0.58, 0.01]]) {
+      const [dx0, dy0] = pt(rr, an), [dx1, dy1] = pt(rr, an + ln);
+      el('path', { d: `M${dx0} ${dy0}A${rr} ${rr} 0 0 1 ${dx1} ${dy1}`, fill: 'none', stroke: '#fff', 'stroke-opacity': 0.22, 'stroke-width': 0.5, 'stroke-linecap': 'round', 'pointer-events': 'none' });
     }
     el('circle', { cx: C, cy: C, r: G1 - 2, fill: '#0b0b0e', stroke: '#2a2d37', 'stroke-width': 0.6 });
-    const LR = 24, art = S.art.title === d.title ? S.art.url : null;     // the centre label
+    const LR = 22, art = S.art.title === d.title ? S.art.url : null;     // the centre label
     el('circle', { cx: C, cy: C, r: LR, fill: '#c9483a' });
     if (art) {
       const clip = el('clipPath', { id: 'hubClip' }); el('circle', { cx: C, cy: C, r: LR }, clip);
       el('image', { href: art, x: C - LR, y: C - LR, width: LR * 2, height: LR * 2, 'clip-path': 'url(#hubClip)', preserveAspectRatio: 'xMidYMid slice' });
     }
     el('circle', { cx: C, cy: C, r: LR, fill: '#000', 'fill-opacity': art ? 0.5 : 0.12, 'pointer-events': 'none' });
+    el('circle', { cx: C + 2, cy: C - 19.5, r: 1.4, fill: '#fff', 'fill-opacity': 0.8, 'pointer-events': 'none' });
     el('circle', { cx: C, cy: C, r: 2.6, fill: '#0b0b0e', stroke: '#e8eaf0', 'stroke-opacity': 0.6, 'stroke-width': 0.6 });
-    target = null;
+    target = recG;
+    for (const [a0, a1] of [[0.07, 0.17], [0.57, 0.67]]) {              // two soft light reflections: the lamp stays put while the record turns underneath
+      const [x0, y0] = pt(77, a0), [x1, y1] = pt(77, a1), [x2, y2] = pt(G1, a1), [x3, y3] = pt(G1, a0);
+      el('path', { d: `M${x0} ${y0}A77 77 0 0 1 ${x1} ${y1}L${x2} ${y2}A${G1} ${G1} 0 0 0 ${x3} ${y3}Z`, fill: '#fff', 'fill-opacity': 0.06, 'pointer-events': 'none' });
+    }
     const pc = el('text', { x: C, y: C - 7, class: 'disc-pct', fill: '#fff' }); pc.textContent = `${Math.round((d.usedSec / total) * 100)}%`;
     const fr = el('text', { x: C, y: C + 9, class: 'disc-sub', fill: '#fff' }); fr.textContent = fmt(Math.max(0, left - queuedSec)) + ' free';
     map.setAttribute('aria-label', `Vinyl record, ${Math.round((d.usedSec / total) * 100)}% full, ${fmt(left)} free`);
     map.classList.remove('has-art');
+    const L = ARM.len, arm = document.createElementNS(SVGNS, 'g'); arm.setAttribute('id', 'tonearm'); arm.setAttribute('class', 'tonearm'); svg.appendChild(arm);
+    const part = (name, attrs) => { const n = document.createElementNS(SVGNS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); arm.appendChild(n); return n; };
+    const hs = 14, off = 18 * Math.PI / 180, ex = L - hs * Math.cos(off), ey = -hs * Math.sin(off);        // where the tube ends; the headshell then angles back so the stylus (at local L, 0) sits tangent to the groove
+    part('rect', { x: -15, y: -3.6, width: 17, height: 7.2, rx: 2, fill: '#3a3e4b' });                       // counterweight behind the pivot
+    part('line', { x1: 0, y1: 0, x2: ex, y2: ey, stroke: '#aeb3c2', 'stroke-width': 2.8, 'stroke-linecap': 'round' });             // the arm tube
+    part('line', { x1: 0, y1: -0.7, x2: ex, y2: ey - 0.7, stroke: '#fff', 'stroke-opacity': 0.5, 'stroke-width': 0.8, 'stroke-linecap': 'round' });   // its highlight
+    const head = part('g', { transform: `translate(${ex.toFixed(2)} ${ey.toFixed(2)}) rotate(${(18).toFixed(1)})` });
+    const sub = (name, attrs) => { const n = document.createElementNS(SVGNS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); head.appendChild(n); };
+    sub('polygon', { points: '-2,-2.6 8,-3.4 14,-0.8 14,0.8 8,3.4 -2,2.6', fill: '#2c2f3a' });               // headshell
+    sub('rect', { x: 6.5, y: -2.4, width: 6.5, height: 4.8, rx: 0.9, fill: '#15171d' });                        // cartridge
+    sub('rect', { x: 12.6, y: -0.5, width: 1.6, height: 1, fill: '#d9dce6' });                                  // stylus cantilever
+    part('circle', { cx: L, cy: 0, r: 0.9, fill: '#ffd166' });                                               // stylus tip: this point is on the groove
+    part('circle', { cx: 0, cy: 0, r: 8.5, fill: '#2b2e38', stroke: '#5a5f70', 'stroke-width': 0.8 });        // pivot base
+    part('circle', { cx: 0, cy: 0, r: 3.4, fill: '#9aa0b4' });
+    applyArm();
     applySpin();
     addPieToggle(map);
     return;
@@ -322,8 +376,14 @@ $('connectBtn').onclick = () => S.connected
   });
 $('refreshBtn').onclick = () => busy('Reading disc…', refresh);
 
-document.querySelectorAll('#transport button').forEach((b) => (b.onclick = () =>
-  window.md.transport(b.dataset.t).catch((e) => toast(e.message, true))));
+document.querySelectorAll('#transport button').forEach((b) => (b.onclick = () => {
+  // Play starts the selected track when the player is stopped (a paused or playing disc just carries on). Without this the player resumes wherever it last stopped.
+  let pick = null;
+  if (b.dataset.t === 'play' && S.playingTrack == null && S.sel.size === 1) pick = [...S.sel][0];
+  window.md.transport(b.dataset.t, pick).then(() => {
+    if (pick != null) { S.playingTrack = pick; S.pos = { track: pick, sec: 0, at: performance.now(), playing: true }; render(); }   // show it at once; the status check confirms a moment later
+  }).catch((e) => toast(e.message, true));
+}));
 
 const canEdit = () => S.connected && S.disc && S.disc.writable && !S.disc.writeProtected && !S.busy && !S.uploading;
 $('discTitle').ondblclick = () => {

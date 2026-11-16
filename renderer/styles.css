@@ -294,3 +294,9 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 .band.playing { animation: pulse 1.6s infinite; }
 .band.queued { fill: var(--warn); fill-opacity: .8; }
 .band.queued.over { fill: var(--danger); fill-opacity: 1; }
+.tonearm { filter: drop-shadow(0 2px 2px #000a); pointer-events: none; }
+.tonearm { transition: filter .35s; }
+.tonearm.lifted { filter: drop-shadow(0 5px 4px #000b); }
+
+
+.discpie.wide { width: 216px; height: 172px; }
