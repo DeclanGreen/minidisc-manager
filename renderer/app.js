@@ -1118,6 +1118,6 @@ async function poll() {
 }
 setTimeout(poll, 3000);
 
-window.md.env().then((env) => { S.atracdenc = env.atracdenc; render(); });
+window.md.env().then((env) => { S.atracdenc = env.atracdenc; $('appVersion').textContent = 'v' + env.version; render(); });
 window.md.getSettings().then((s) => ($('lyAuto').checked = s.onlineLyrics));
 render();

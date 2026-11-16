@@ -1,6 +1,6 @@
 {
   "name": "retrodisc",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Manage NetMD MiniDisc players: read discs, rename, reorder, erase, and transfer MP3s in SP/LP2/LP4",
   "main": "main.js",
   "scripts": {

@@ -41,6 +41,7 @@ button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger
 .topbar { display: flex; align-items: center; gap: 20px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .brand { display: flex; align-items: center; gap: 12px; flex: 1; }
 .brand h1 { font-size: 17px; margin: 0; font-weight: 650; }
+.brand .ver { font-size: 11px; font-weight: 400; opacity: 0.6; margin-left: 6px; }
 .logo { width: 38px; height: 38px; }
 .logo-shell { fill: var(--panel-2); stroke: var(--accent); stroke-width: 1.5; }
 .logo-shutter { fill: var(--line); }
