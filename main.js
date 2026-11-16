@@ -670,6 +670,82 @@ handle('upload', (items, mode) => exclusive(async () => {
   return done;
 }));
 
+// ---------- printable inlay (case insert) ----------
+// Builds a self-contained HTML page (it has no CSP, so it can carry its own styles and a Print button) and shows it in a preview window.
+// Layout (approximate standard MiniDisc case insert, in mm; adjust the --w/--h variables in the page if your case differs):
+// front cover 68 x 72 (art, title, pie), track-list card 68 x 72, and a spine strip.
+const escHtml = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function inlayPie(tracks, queuedFrac, usedPct) {
+  const C = 80, R = 74, r = 31, pt = (rad, f) => [C + rad * Math.sin(f * 2 * Math.PI), C - rad * Math.cos(f * 2 * Math.PI)];
+  const seg = (f0, f1, fill) => {
+    if (f1 - f0 < 0.0005) return '';
+    if (f1 - f0 >= 0.9999) f1 = f0 + 0.9999;
+    const [x0, y0] = pt(R, f0), [x1, y1] = pt(R, f1), [x2, y2] = pt(r, f1), [x3, y3] = pt(r, f0), big = f1 - f0 > 0.5 ? 1 : 0;
+    return `<path d="M${x0} ${y0}A${R} ${R} 0 ${big} 1 ${x1} ${y1}L${x2} ${y2}A${r} ${r} 0 ${big} 0 ${x3} ${y3}Z" fill="${fill}" stroke="#fff" stroke-width="1"/>`;
+  };
+  let f = 0, out = `<circle cx="${C}" cy="${C}" r="${R + 4}" fill="#e9ecf2" stroke="#b9bfcc"/><circle cx="${C}" cy="${C}" r="${R}" fill="#d5d9e2"/>`;
+  for (const t of tracks) {
+    out += seg(f, f + t.frac, t.color);
+    if (t.frac >= 0.022) { const [lx, ly] = pt((R + r) / 2 + 4, f + t.frac / 2); out += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central" font-size="${t.frac >= 0.04 ? 10 : 7}" font-weight="700" fill="#fff" stroke="#0006" stroke-width="2" paint-order="stroke">${t.n}</text>`; }
+    f += t.frac;
+  }
+  if (queuedFrac > 0) out += seg(f, f + queuedFrac, '#f2b04d');
+  return out + `<circle cx="${C}" cy="${C}" r="${r}" fill="#fff" stroke="#b9bfcc"/><circle cx="${C}" cy="${C}" r="9" fill="none" stroke="#b9bfcc" stroke-dasharray="2 3"/>`
+    + `<text x="${C}" y="${C - 2}" text-anchor="middle" dominant-baseline="central" font-size="17" font-weight="700" fill="#222">${usedPct}%</text><text x="${C}" y="${C + 14}" text-anchor="middle" font-size="8" fill="#666">full</text>`;
+}
+function buildInlayHtml(d) {
+  const n = d.tracks.length, cols = n > 12 ? 2 : 1, rowPt = Math.max(5.2, Math.min(cols === 2 ? 7.2 : 8.5, 52 / Math.ceil(n / cols) * 1.9));
+  const rows = d.tracks.map((t) => `<li><i style="background:${escHtml(t.color)}"></i><b>${t.n}</b><span class="tt">${escHtml(t.title)}</span><em>${escHtml(t.time)}</em></li>`).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Inlay – ${escHtml(d.title)}</title><style>
+  :root { --w: 68mm; --h: 72mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #e6e8ee; color: #1b1e26; }
+  .bar { position: sticky; top: 0; display: flex; gap: 12px; align-items: center; padding: 10px 16px; background: #1a1d25; color: #fff; font-size: 13px; z-index: 2; }
+  .bar button { font: inherit; padding: 7px 16px; border-radius: 7px; border: 0; background: #4fb3ff; color: #00192e; font-weight: 600; cursor: pointer; }
+  .bar span { color: #aeb4c4; }
+  .sheet { width: 210mm; min-height: 297mm; margin: 14px auto; background: #fff; padding: 14mm 15mm; box-shadow: 0 4px 22px #0003; }
+  .cards { display: flex; flex-wrap: wrap; gap: 0; align-items: flex-start; }
+  .card { width: var(--w); height: var(--h); border: 0.25mm dashed #888; position: relative; overflow: hidden; margin: 0 0 0 0; }
+  .spine { width: calc(var(--w) * 2); height: 8mm; border: 0.25mm dashed #888; border-top: 0; display: flex; align-items: center; padding: 0 3mm; font-size: 8pt; font-weight: 700; gap: 3mm; white-space: nowrap; overflow: hidden; }
+  .spine small { font-weight: 400; color: #555; }
+  .front { background: #11141b; color: #fff; display: flex; flex-direction: column; }
+  .front .art { flex: none; height: 44mm; background: #222 center / cover no-repeat; }
+  .front .noart { flex: none; height: 44mm; display: grid; place-items: center; background: linear-gradient(145deg, #4fb3ff, #8e7bff); font-size: 30pt; opacity: .9; }
+  .front .info { flex: 1; padding: 2.5mm 3mm; display: flex; align-items: center; gap: 3mm; min-height: 0; }
+  .front .info svg { width: 22mm; height: 22mm; flex: none; }
+  .front h1 { font-size: 11pt; line-height: 1.15; margin: 0 0 1mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+  .front p { margin: 0; font-size: 7pt; color: #aeb4c4; }
+  .list { padding: 3mm 3.5mm; background: #fff; }
+  .list h2 { font-size: 8.5pt; margin: 0 0 1.5mm; padding-bottom: 1mm; border-bottom: 0.3mm solid #222; display: flex; justify-content: space-between; gap: 2mm; }
+  .list h2 span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .list h2 small { font-weight: 400; color: #555; flex: none; }
+  .list ol { list-style: none; margin: 0; padding: 0; column-count: ${cols}; column-gap: 3mm; font-size: ${rowPt.toFixed(1)}pt; }
+  .list li { display: flex; align-items: baseline; gap: 1.2mm; line-height: 1.5; break-inside: avoid; }
+  .list li i { flex: none; width: 1.8mm; height: 1.8mm; border-radius: 50%; align-self: center; }
+  .list li b { flex: none; width: 4.4mm; text-align: right; color: #555; font-weight: 600; }
+  .list li .tt { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .list li em { flex: none; font-style: normal; color: #555; font-variant-numeric: tabular-nums; }
+  .note { font-size: 8pt; color: #777; margin-top: 8mm; }
+  @media print { body { background: #fff; } .bar, .note { display: none; } .sheet { margin: 0; box-shadow: none; width: auto; min-height: 0; padding: 12mm 12mm; } @page { size: A4; margin: 0; } }
+  </style></head><body>
+  <div class="bar"><button onclick="window.print()">Print…</button><span>Choose "Microsoft Print to PDF" in the print dialog to save it as a PDF. Print at 100% scale, then cut along the dashed lines.</span></div>
+  <div class="sheet"><div class="cards">
+    <div class="card front">${d.art ? `<div class="art" style="background-image:url('${escHtml(d.art)}')"></div>` : '<div class="noart">♪</div>'}
+      <div class="info"><svg viewBox="0 0 160 160">${inlayPie(d.tracks, d.queuedFrac || 0, d.usedPct)}</svg><div><h1>${escHtml(d.title || 'Untitled disc')}</h1><p>${n} track${n === 1 ? '' : 's'} · ${escHtml(d.used)} of ${escHtml(d.total)}</p></div></div></div>
+    <div class="card list"><h2><span>${escHtml(d.title || 'Untitled disc')}</span><small>${escHtml(d.used)}</small></h2><ol>${rows}</ol></div>
+    <div class="spine"><b>${escHtml(d.title || 'Untitled disc')}</b><small>${n} tracks · ${escHtml(d.used)}</small></div>
+  </div><p class="note">The cards are sized for a standard MiniDisc case insert (about 68 × 72 mm), but cases vary. Check one against your case before cutting a lot of them.</p></div></body></html>`;
+}
+handle('print-inlay', (d) => {
+  const file = path.join(app.getPath('temp'), 'retrodisc-inlay.html');
+  fs.writeFileSync(file, buildInlayHtml(d), 'utf8');
+  const w = new BrowserWindow({ width: 920, height: 900, title: 'Inlay – ' + (d.title || 'MiniDisc'), autoHideMenuBar: true, parent: win, backgroundColor: '#e6e8ee', icon: path.join(__dirname, 'build', 'icon.png'),
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  w.loadFile(file);
+  log(`Opened the inlay preview for "${d.title || 'MiniDisc'}"`);
+});
+
 // ---------- window
 function createWindow() {
   win = new BrowserWindow({

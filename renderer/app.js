@@ -64,6 +64,7 @@ function render(busyLabel) {
     : `${d.tracks.length} track${d.tracks.length === 1 ? '' : 's'} · ${fmt(d.totalSec)} disc` + (d.writeProtected ? ' · write-protected (slide the tab to record)' : '');
   $('eraseBtn').disabled = !canEdit || !d.tracks.length;
   $('exportBtn').disabled = !d || S.busy || S.uploading;
+  $('inlayBtn').disabled = !d || !d.tracks.length;
   $('importBtn').disabled = !canEdit;
   $('deleteBtn').disabled = !canEdit || !S.sel.size;
   $('deleteBtn').textContent = S.sel.size > 1 ? `Delete ${S.sel.size} tracks` : 'Delete selected';
@@ -140,6 +141,13 @@ function renderTrackMap(d, share, queuedSec, left) {
     el('title', {}, p).textContent = `Queued to send: ${fmt(queuedSec)}${queuedSec > left ? ' — more than the free space' : ''}`;
   }
   el('circle', { cx: C, cy: C, r: r, class: 'disc-hole' });                // hub area
+  const artUrl = S.art.title === d.title ? S.art.url : null;               // the album art fills the hub like a printed disc label
+  if (artUrl) {
+    const clip = el('clipPath', { id: 'hubClip' }); el('circle', { cx: C, cy: C, r: r - 1 }, clip);
+    el('image', { href: artUrl, x: C - r, y: C - r, width: r * 2, height: r * 2, 'clip-path': 'url(#hubClip)', preserveAspectRatio: 'xMidYMid slice' });
+    el('circle', { cx: C, cy: C, r: r - 1, class: 'disc-hub-shade' });
+  }
+  map.classList.toggle('has-art', !!artUrl);
   el('circle', { cx: C, cy: C, r: 9, class: 'disc-spindle' });
   const pct = el('text', { x: C, y: C - 10, class: 'disc-pct' }); pct.textContent = `${Math.round((d.usedSec / total) * 100)}%`;
   const sub = el('text', { x: C, y: C + 12, class: 'disc-sub' }); sub.textContent = fmt(Math.max(0, left - queuedSec));
@@ -335,6 +343,21 @@ $('exportBtn').onclick = async () => {
   try {
     const where = await window.md.saveText(`${(d.title || 'MiniDisc').replace(/[\\/:*?"<>|]/g, '_')}.csv`, '﻿' + lines.join('\r\n') + '\r\n');
     if (where) toast(`Saved ${d.tracks.length} track${d.tracks.length === 1 ? '' : 's'} to ${where}`);
+  } catch (e) { toast(e.message, true); }
+};
+$('inlayBtn').onclick = async () => {
+  const d = S.disc; if (!d || !d.tracks.length) return;
+  const share = trackShares(d), total = d.totalSec || 1;
+  // When every title starts with the same "Artist - ", show the artist once and drop it from each line so the titles fit.
+  const pre = (d.tracks[0].title || '').match(/^(.{2,40}?) [-–] /)?.[1];
+  const shared = pre && d.tracks.length > 2 && d.tracks.every((t) => (t.title || '').startsWith(pre + ' ')) ? pre : null;
+  const shown = (t) => { const x = t.title || 'No title'; return shared ? x.replace(/^.*? [-–] /, '') : x; };
+  try {
+    await window.md.printInlay({ artist: shared,
+      title: d.title, art: S.art.title === d.title ? S.art.url : null,
+      used: fmt(d.usedSec), total: fmt(d.totalSec), usedPct: Math.round((d.usedSec / total) * 100), queuedFrac: 0,   // the card shows what is on the disc now, not the queue
+      tracks: d.tracks.map((t) => ({ n: t.index + 1, title: shown(t), time: fmt(t.seconds), frac: share.get(t.index)?.frac || 0, color: share.get(t.index)?.color || '#888' })),
+    });
   } catch (e) { toast(e.message, true); }
 };
 $('importBtn').onclick = async () => {

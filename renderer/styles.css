@@ -278,3 +278,7 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 .share { position: relative; height: 16px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
 .share i { position: absolute; left: 0; top: 0; bottom: 0; display: block; }
 .share b { position: relative; display: block; text-align: right; padding: 0 6px; font-size: 10.5px; line-height: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000a; color: #fff; }
+.disc-hub-shade { fill: #000; opacity: .58; pointer-events: none; }
+.discpie.has-art .disc-pct { fill: #fff; }
+.discpie.has-art .disc-sub { fill: #e6e8f0; }
+.discpie.has-art .disc-spindle { stroke: #fff9; }

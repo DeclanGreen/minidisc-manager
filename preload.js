@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('md', {
   transport: (a) => call('transport', a),
   pickFiles: () => call('pick-files'),
   saveText: (name, text) => call('save-text', name, text),
+  printInlay: (data) => call('print-inlay', data),
   openText: () => call('open-text'),
   probeFiles: (paths) => call('probe-files', paths),
   pickFolderOrPlaylist: (kind) => call('pick-folder-or-playlist', kind),
