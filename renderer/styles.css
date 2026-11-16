@@ -259,19 +259,22 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 
 
 /* per-track disc usage: one block per track, scaled to the whole disc, plus a share bar in each row */
-.trackmap-wrap { margin-top: 12px; }
-.trackmap-cap { margin-bottom: 5px; }
-.trackmap { display: flex; height: 30px; border-radius: 7px; overflow: hidden; background: var(--panel-2); border: 1px solid var(--line); }
-.trackmap:empty { display: none; }
-.trackmap .seg { flex: none; min-width: 2px; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #0008; cursor: pointer;
-  border-right: 1px solid var(--panel); overflow: hidden; white-space: nowrap; transition: filter .15s, width .4s; }
-.trackmap .seg:hover { filter: brightness(1.25); }
-.trackmap .seg.sel { outline: 2px solid var(--text); outline-offset: -2px; }
-.trackmap .seg.playing { animation: pulse 1.6s infinite; }
-.trackmap .seg.queued { background: repeating-linear-gradient(45deg, var(--warn) 0 6px, color-mix(in srgb, var(--warn) 60%, transparent) 6px 12px); color: #1b1e26; text-shadow: none; cursor: default; }
-.trackmap .seg.queued.over { background: var(--danger); }
-.trackmap .seg.free { flex: 1; min-width: 0; background: transparent; border-right: 0; cursor: default; color: var(--muted); text-shadow: none; font-weight: 600; }
-.c-share { width: 120px; }
+.discpie { flex: none; width: 150px; height: 150px; margin: -6px 0 -6px 6px; }
+.discsvg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 12px #0006); }
+.disc-shell { fill: color-mix(in srgb, var(--text) 10%, transparent); stroke: var(--line); stroke-width: 1; }
+.disc-base { fill: var(--panel-2); }
+.slice { stroke: var(--panel); stroke-width: 1; cursor: default; transition: opacity .15s; }
+.slice.track { cursor: pointer; }
+.slice.track:hover { filter: brightness(1.3); }
+.slice.sel { stroke: var(--text); stroke-width: 2.5; }
+.slice.playing { animation: pulse 1.6s infinite; }
+.slice.queued { fill: var(--warn); opacity: .75; }
+.slice.queued.over { fill: var(--danger); opacity: 1; }
+.slice-num { fill: #fff; font-size: 10px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: #0006; stroke-width: 2px; }
+.disc-hole { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+.disc-spindle { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+.disc-pct { fill: var(--text); font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.disc-sub { fill: var(--muted); font-size: 8.5px; text-anchor: middle; dominant-baseline: central; }.c-share { width: 120px; }
 .share { position: relative; height: 16px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
 .share i { position: absolute; left: 0; top: 0; bottom: 0; display: block; }
 .share b { position: relative; display: block; text-align: right; padding: 0 6px; font-size: 10.5px; line-height: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000a; color: #fff; }

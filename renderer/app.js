@@ -99,32 +99,53 @@ function trackShares(d) {
   d.tracks.forEach((t, i) => out.set(t.index, { sec: w[i] * k, frac: (w[i] * k) / (d.totalSec || 1), color: `hsl(${TRACK_HUES[t.index % TRACK_HUES.length]} 62% 46%)` }));
   return out;
 }
+// The disc drawn as a MiniDisc-style pie: a ring split into one slice per track (clockwise from 12 o'clock), then the queued slice and the free space.
+const SVGNS = 'http://www.w3.org/2000/svg';
 function renderTrackMap(d, share, queuedSec, left) {
   const map = $('trackMap');
   map.textContent = '';
-  if (!d || !d.tracks.length) { $('trackMapHint').textContent = ''; return; }
-  const total = d.totalSec || 1;
-  $('trackMapHint').textContent = '· hover a block for details, click to select';
-  const addSeg = (cls, pct, text, tip) => {
-    const s = document.createElement('div');
-    s.className = 'seg ' + cls; s.style.width = `${pct}%`; s.textContent = text; if (tip) s.title = tip;
-    map.appendChild(s); return s;
+  map.classList.toggle('hidden', !d);
+  if (!d) return;
+  const total = d.totalSec || 1, C = 80, R = 74, r = 31;               // centre, outer radius of the data ring, radius of the hub hole
+  const el = (name, attrs = {}, parent = svg) => { const n = document.createElementNS(SVGNS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); parent.appendChild(n); return n; };
+  const svg = document.createElementNS(SVGNS, 'svg'); svg.setAttribute('viewBox', '0 0 160 160'); svg.setAttribute('class', 'discsvg'); map.appendChild(svg);
+  const pt = (rad, f) => [C + rad * Math.sin(f * 2 * Math.PI), C - rad * Math.cos(f * 2 * Math.PI)];
+  const slice = (f0, f1) => {                                          // a ring segment from fraction f0 to f1
+    if (f1 - f0 >= 0.9999) f1 = f0 + 0.9999;
+    const [x0, y0] = pt(R, f0), [x1, y1] = pt(R, f1), [x2, y2] = pt(r, f1), [x3, y3] = pt(r, f0), big = f1 - f0 > 0.5 ? 1 : 0;
+    return `M${x0} ${y0}A${R} ${R} 0 ${big} 1 ${x1} ${y1}L${x2} ${y2}A${r} ${r} 0 ${big} 0 ${x3} ${y3}Z`;
   };
+  el('circle', { cx: C, cy: C, r: R + 4, class: 'disc-shell' });          // the clear MD cartridge-style rim
+  el('circle', { cx: C, cy: C, r: R, class: 'disc-base' });                // the unrecorded surface
+  let f = 0;
   d.tracks.forEach((t) => {
-    const sh = share.get(t.index); if (!sh) return;
-    const s = addSeg('track' + (S.sel.has(t.index) ? ' sel' : '') + (S.playingTrack === t.index ? ' playing' : ''), sh.frac * 100, sh.frac >= 0.04 ? String(t.index + 1) : '',
-      `${t.index + 1}. ${t.title || 'No title'}\n${fmt(t.seconds)} playing time · ${t.encoding}${t.mono ? ' mono' : ''} · ${(sh.frac * 100).toFixed(1)}% of the disc (${fmt(sh.sec)} of recording space)`);
-    s.style.background = sh.color; s.dataset.i = t.index;
+    const sh = share.get(t.index); if (!sh || sh.frac <= 0) return;
+    const f1 = f + sh.frac;
+    const p = el('path', { d: slice(f, f1), fill: sh.color, class: 'slice track' + (S.sel.has(t.index) ? ' sel' : '') + (S.playingTrack === t.index ? ' playing' : '') });
+    p.dataset.i = t.index;
+    el('title', {}, p).textContent = `${t.index + 1}. ${t.title || 'No title'}\n${fmt(t.seconds)} playing time · ${t.encoding}${t.mono ? ' mono' : ''} · ${(sh.frac * 100).toFixed(1)}% of the disc`;
+    if (sh.frac >= 0.04) {
+      const [lx, ly] = pt((R + r) / 2, f + sh.frac / 2);
+      const tx = el('text', { x: lx, y: ly, class: 'slice-num' }); tx.textContent = t.index + 1;
+    }
+    f = f1;
   });
-  const q = Math.min(queuedSec, left);
-  if (queuedSec > 0) addSeg('queued' + (queuedSec > left ? ' over' : ''), (q / total) * 100, queuedSec / total >= 0.06 ? 'queued' : '', `Queued to send: ${fmt(queuedSec)}${queuedSec > left ? ' — more than the free space' : ''}`);
-  addSeg('free', 0, left - queuedSec >= total * 0.08 ? `${fmt(Math.max(0, left - queuedSec))} free` : '', `Free: ${fmt(Math.max(0, left - queuedSec))}`);
+  const q = Math.min(queuedSec, left) / total;
+  if (queuedSec > 0 && q > 0) {
+    const p = el('path', { d: slice(f, f + q), class: 'slice queued' + (queuedSec > left ? ' over' : '') });
+    el('title', {}, p).textContent = `Queued to send: ${fmt(queuedSec)}${queuedSec > left ? ' — more than the free space' : ''}`;
+  }
+  el('circle', { cx: C, cy: C, r: r, class: 'disc-hole' });                // hub area
+  el('circle', { cx: C, cy: C, r: 9, class: 'disc-spindle' });
+  const pct = el('text', { x: C, y: C - 10, class: 'disc-pct' }); pct.textContent = `${Math.round((d.usedSec / total) * 100)}%`;
+  const sub = el('text', { x: C, y: C + 12, class: 'disc-sub' }); sub.textContent = fmt(Math.max(0, left - queuedSec));
+  const sub2 = el('text', { x: C, y: C + 23, class: 'disc-sub' }); sub2.textContent = 'free';
+  map.setAttribute('aria-label', `Disc ${Math.round((d.usedSec / total) * 100)}% full, ${fmt(left)} free`);
 }
 $('trackMap').onclick = (e) => {
-  const seg = e.target.closest('.seg.track'); if (!seg) return;
-  S.sel = new Set([+seg.dataset.i]); S.anchor = +seg.dataset.i; render();
+  const sl = e.target.closest('.slice.track'); if (!sl) return;
+  S.sel = new Set([+sl.dataset.i]); S.anchor = +sl.dataset.i; render();
 };
-
 function renderTracks(canEdit, share = new Map()) {
   const body = $('trackBody');
   const tracks = S.disc?.tracks || [];
