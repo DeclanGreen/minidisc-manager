@@ -82,7 +82,7 @@ function render(busyLabel) {
   $('capFreeModes').textContent = d ? `≈ ${fmt(left * 2)} in LP2 · ${fmt(left * 4)} in LP4` : '';
 
   const share = trackShares(d);
-  renderTrackMap(d, share, queuedSec, left);
+  renderTrackMap(d, share, queuedSec, left); kickSpin();
   renderTracks(canEdit, share);
   renderQueue(d, queuedSec, left);
   syncLyrics();
@@ -106,13 +106,42 @@ function trackShares(d) {
 }
 // The disc drawn as a MiniDisc-style pie: a ring split into one slice per track (clockwise from 12 o'clock), then the queued slice and the free space.
 const SVGNS = 'http://www.w3.org/2000/svg';
+// Turntable: while a track is playing the vinyl turns at 33 1/3 rpm. It spins up and slows down gradually, like a platter with some weight.
+// The angle lives outside the SVG because the graphic is redrawn often; each redraw just picks the angle up again.
+const SPIN = { angle: 0, speed: 0, last: 0, raf: 0 };
+function applySpin() {
+  const g = document.getElementById('vinylRot');
+  if (g) g.setAttribute('transform', `rotate(${SPIN.angle.toFixed(2)} 80 80)`);
+}
+function spinFrame(ts) {
+  SPIN.raf = 0;
+  const dt = SPIN.last ? Math.min(0.1, (ts - SPIN.last) / 1000) : 0; SPIN.last = ts;
+  const want = pieStyle === 'vinyl' && S.pos.playing && S.playingTrack != null ? 200 : 0;   // 200 degrees per second = 33 1/3 rpm
+  SPIN.speed += (want - SPIN.speed) * Math.min(1, dt * (want ? 1.6 : 0.9));                // gentle spin-up, longer coast-down
+  if (SPIN.speed < 0.4 && !want) SPIN.speed = 0;
+  SPIN.angle = (SPIN.angle + SPIN.speed * dt) % 360;
+  applySpin();
+  if (SPIN.speed > 0 || want) SPIN.raf = requestAnimationFrame(spinFrame); else SPIN.last = 0;
+}
+function kickSpin() { if (!SPIN.raf) SPIN.raf = requestAnimationFrame(spinFrame); }
+// Two looks for the disc graphic: the MiniDisc ring ('md') or an old vinyl record ('vinyl'). Remembered between runs.
+let pieStyle = 'vinyl';
+try { pieStyle = localStorage.getItem('retrodisc.pieStyle') || 'vinyl'; } catch {}
+function addPieToggle(map) {
+  const b = document.createElement('button');
+  b.className = 'pie-toggle'; b.textContent = pieStyle === 'vinyl' ? 'MiniDisc look' : 'Vinyl look';
+  b.title = 'Switch the disc graphic between a MiniDisc and an old vinyl record';
+  b.onclick = (e) => { e.stopPropagation(); pieStyle = pieStyle === 'vinyl' ? 'md' : 'vinyl'; try { localStorage.setItem('retrodisc.pieStyle', pieStyle); } catch {} render(); };
+  map.appendChild(b);
+}
 function renderTrackMap(d, share, queuedSec, left) {
   const map = $('trackMap');
   map.textContent = '';
   map.classList.toggle('hidden', !d);
   if (!d) return;
   const total = d.totalSec || 1, C = 80, R = 74, r = 31;               // centre, outer radius of the data ring, radius of the hub hole
-  const el = (name, attrs = {}, parent = svg) => { const n = document.createElementNS(SVGNS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); parent.appendChild(n); return n; };
+  let target = null;
+  const el = (name, attrs = {}, parent = target || svg) => { const n = document.createElementNS(SVGNS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); parent.appendChild(n); return n; };
   const svg = document.createElementNS(SVGNS, 'svg'); svg.setAttribute('viewBox', '0 0 160 160'); svg.setAttribute('class', 'discsvg'); map.appendChild(svg);
   const pt = (rad, f) => [C + rad * Math.sin(f * 2 * Math.PI), C - rad * Math.cos(f * 2 * Math.PI)];
   const slice = (f0, f1) => {                                          // a ring segment from fraction f0 to f1
@@ -120,6 +149,45 @@ function renderTrackMap(d, share, queuedSec, left) {
     const [x0, y0] = pt(R, f0), [x1, y1] = pt(R, f1), [x2, y2] = pt(r, f1), [x3, y3] = pt(r, f0), big = f1 - f0 > 0.5 ? 1 : 0;
     return `M${x0} ${y0}A${R} ${R} 0 ${big} 1 ${x1} ${y1}L${x2} ${y2}A${r} ${r} 0 ${big} 0 ${x3} ${y3}Z`;
   };
+  if (pieStyle === 'vinyl') {
+    // An old 12-inch record: black, finely grooved, tracks as concentric bands from the outside in (the way a record is played), the unrecorded part is bare groove near the label.
+    const rot = document.createElementNS(SVGNS, 'g'); rot.setAttribute('id', 'vinylRot'); svg.appendChild(rot); target = rot;   // everything but the text spins
+    const G0 = 77, G1 = 29, span = G0 - G1;                             // groove zone from radius 77 in to 29
+    const ring = (ra, rb) => `M${C - ra} ${C}A${ra} ${ra} 0 1 0 ${C + ra} ${C}A${ra} ${ra} 0 1 0 ${C - ra} ${C}ZM${C - rb} ${C}A${rb} ${rb} 0 1 1 ${C + rb} ${C}A${rb} ${rb} 0 1 1 ${C - rb} ${C}Z`;
+    el('circle', { cx: C, cy: C, r: 79, fill: '#0b0b0e', stroke: '#2a2d37', 'stroke-width': 1 });
+    // Plain black vinyl. Like a real record, only the thin smooth gaps between tracks show, placed by how much of the disc each track takes (outside in).
+    let ro = G0;
+    d.tracks.forEach((t, i) => {
+      const sh = share.get(t.index); if (!sh || sh.frac <= 0) return;
+      ro = Math.max(G1, ro - sh.frac * span);
+      if (i < d.tracks.length - 1 && ro > G1 + 1) {
+        el('circle', { cx: C, cy: C, r: ro, fill: 'none', stroke: '#000', 'stroke-width': 0.9, 'pointer-events': 'none' });
+        el('circle', { cx: C, cy: C, r: ro - 0.6, fill: 'none', stroke: '#fff', 'stroke-opacity': 0.1, 'stroke-width': 0.25, 'pointer-events': 'none' });
+      }
+    });
+    for (let g = G0; g >= G1; g -= 1.5) el('circle', { cx: C, cy: C, r: g, fill: 'none', stroke: '#fff', 'stroke-opacity': g % 3 === 0 ? 0.05 : 0.025, 'stroke-width': 0.35, 'pointer-events': 'none' });
+    for (const [a0, a1] of [[0.07, 0.17], [0.57, 0.67]]) {              // two soft light reflections, like a record under a lamp
+      const [x0, y0] = pt(77, a0), [x1, y1] = pt(77, a1), [x2, y2] = pt(G1, a1), [x3, y3] = pt(G1, a0);
+      el('path', { d: `M${x0} ${y0}A77 77 0 0 1 ${x1} ${y1}L${x2} ${y2}A${G1} ${G1} 0 0 0 ${x3} ${y3}Z`, fill: '#fff', 'fill-opacity': 0.06, 'pointer-events': 'none' });
+    }
+    el('circle', { cx: C, cy: C, r: G1 - 2, fill: '#0b0b0e', stroke: '#2a2d37', 'stroke-width': 0.6 });
+    const LR = 24, art = S.art.title === d.title ? S.art.url : null;     // the centre label
+    el('circle', { cx: C, cy: C, r: LR, fill: '#c9483a' });
+    if (art) {
+      const clip = el('clipPath', { id: 'hubClip' }); el('circle', { cx: C, cy: C, r: LR }, clip);
+      el('image', { href: art, x: C - LR, y: C - LR, width: LR * 2, height: LR * 2, 'clip-path': 'url(#hubClip)', preserveAspectRatio: 'xMidYMid slice' });
+    }
+    el('circle', { cx: C, cy: C, r: LR, fill: '#000', 'fill-opacity': art ? 0.5 : 0.12, 'pointer-events': 'none' });
+    el('circle', { cx: C, cy: C, r: 2.6, fill: '#0b0b0e', stroke: '#e8eaf0', 'stroke-opacity': 0.6, 'stroke-width': 0.6 });
+    target = null;
+    const pc = el('text', { x: C, y: C - 7, class: 'disc-pct', fill: '#fff' }); pc.textContent = `${Math.round((d.usedSec / total) * 100)}%`;
+    const fr = el('text', { x: C, y: C + 9, class: 'disc-sub', fill: '#fff' }); fr.textContent = fmt(Math.max(0, left - queuedSec)) + ' free';
+    map.setAttribute('aria-label', `Vinyl record, ${Math.round((d.usedSec / total) * 100)}% full, ${fmt(left)} free`);
+    map.classList.remove('has-art');
+    applySpin();
+    addPieToggle(map);
+    return;
+  }
   el('circle', { cx: C, cy: C, r: R + 4, class: 'disc-shell' });          // the clear MD cartridge-style rim
   el('circle', { cx: C, cy: C, r: R, class: 'disc-base' });                // the unrecorded surface
   let f = 0;
@@ -153,9 +221,10 @@ function renderTrackMap(d, share, queuedSec, left) {
   const sub = el('text', { x: C, y: C + 12, class: 'disc-sub' }); sub.textContent = fmt(Math.max(0, left - queuedSec));
   const sub2 = el('text', { x: C, y: C + 23, class: 'disc-sub' }); sub2.textContent = 'free';
   map.setAttribute('aria-label', `Disc ${Math.round((d.usedSec / total) * 100)}% full, ${fmt(left)} free`);
+  addPieToggle(map);
 }
 $('trackMap').onclick = (e) => {
-  const sl = e.target.closest('.slice.track'); if (!sl) return;
+  const sl = e.target.closest('.track[data-i]'); if (!sl) return;
   S.sel = new Set([+sl.dataset.i]); S.anchor = +sl.dataset.i; render();
 };
 function renderTracks(canEdit, share = new Map()) {
@@ -978,7 +1047,7 @@ async function poll() {
           const keep = S.pos.track === st.track && S.pos.playing && st.state === 'playing' && Math.abs(predicted - sec) < 1.2;
           S.pos = keep ? { ...S.pos } : { track: st.track, sec, at: performance.now(), playing: st.state === 'playing' };
           if (!keep) S.ly.cur = -2; // force a redraw of the highlight
-          S.pos.playing = st.state === 'playing';
+          S.pos.playing = st.state === 'playing'; kickSpin();
         }
         if (playingTrack !== S.playingTrack) { S.playingTrack = playingTrack; render(); }
         if (st.state === 'playing' && S.tab === 'lyrics') delay = 1000;

@@ -282,3 +282,15 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 .discpie.has-art .disc-pct { fill: #fff; }
 .discpie.has-art .disc-sub { fill: #e6e8f0; }
 .discpie.has-art .disc-spindle { stroke: #fff9; }
+.discpie { position: relative; }
+.pie-toggle { position: absolute; right: -2px; bottom: -6px; padding: 2px 8px; font-size: 10.5px; border-radius: 10px; opacity: .55; background: var(--panel); }
+.discpie:hover .pie-toggle, .pie-toggle:focus-visible { opacity: 1; }
+
+.discpie .disc-pct { font-size: 15px; }
+.band { stroke: #0b0b0e; stroke-width: .3; }
+.band.track { cursor: pointer; }
+.band.track:hover { filter: brightness(1.3); }
+.band.sel { stroke: #fff; stroke-width: .8; }
+.band.playing { animation: pulse 1.6s infinite; }
+.band.queued { fill: var(--warn); fill-opacity: .8; }
+.band.queued.over { fill: var(--danger); fill-opacity: 1; }
