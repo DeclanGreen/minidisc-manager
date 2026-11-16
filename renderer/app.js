@@ -89,14 +89,18 @@ function render(busyLabel) {
 
 // How much of the disc each track takes, in disc seconds. A track plays for t.seconds but LP2/LP4 (and mono SP) pack it into a half/quarter of the space, so weight by
 // seconds / compression, then scale so the weights add up to the disc's real used time (that absorbs any rounding or header overhead).
-const TRACK_HUES = [205, 265, 335, 28, 160, 48, 300, 188, 12, 235, 100, 350];
 function trackShares(d) {
   const out = new Map();
   if (!d || !d.tracks.length) return out;
   const w = d.tracks.map((t) => t.seconds / (MODE_FACTOR[t.encoding] || 1) / (t.mono && t.encoding === 'SP' ? 2 : 1));
   const sum = w.reduce((a, b) => a + b, 0) || 1;
   const k = d.usedSec > 0 ? d.usedSec / sum : 1;
-  d.tracks.forEach((t, i) => out.set(t.index, { sec: w[i] * k, frac: (w[i] * k) / (d.totalSec || 1), color: `hsl(${TRACK_HUES[t.index % TRACK_HUES.length]} 62% 46%)` }));
+  // Hues step by the golden angle so neighbouring tracks always differ; the last track must also differ from the first, because they meet at 12 o'clock.
+  const n = d.tracks.length, hues = d.tracks.map((_, i) => (205 + i * 137.508) % 360);
+  const gap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+  if (n > 2 && gap(hues[n - 1], hues[0]) < 60) hues[n - 1] = (hues[n - 1] + 90) % 360;
+  if (n > 2 && gap(hues[n - 1], hues[n - 2]) < 40) hues[n - 1] = (hues[n - 1] + 180) % 360;
+  d.tracks.forEach((t, i) => out.set(t.index, { sec: w[i] * k, frac: (w[i] * k) / (d.totalSec || 1), color: `hsl(${hues[i].toFixed(0)} 62% ${i % 2 ? 52 : 44}%)` }));
   return out;
 }
 // The disc drawn as a MiniDisc-style pie: a ring split into one slice per track (clockwise from 12 o'clock), then the queued slice and the free space.
@@ -124,9 +128,9 @@ function renderTrackMap(d, share, queuedSec, left) {
     const p = el('path', { d: slice(f, f1), fill: sh.color, class: 'slice track' + (S.sel.has(t.index) ? ' sel' : '') + (S.playingTrack === t.index ? ' playing' : '') });
     p.dataset.i = t.index;
     el('title', {}, p).textContent = `${t.index + 1}. ${t.title || 'No title'}\n${fmt(t.seconds)} playing time · ${t.encoding}${t.mono ? ' mono' : ''} · ${(sh.frac * 100).toFixed(1)}% of the disc`;
-    if (sh.frac >= 0.04) {
-      const [lx, ly] = pt((R + r) / 2, f + sh.frac / 2);
-      const tx = el('text', { x: lx, y: ly, class: 'slice-num' }); tx.textContent = t.index + 1;
+    if (sh.frac >= 0.022) {                                                  // narrow slices get a smaller number
+      const [lx, ly] = pt((R + r) / 2 + 4, f + sh.frac / 2);
+      const tx = el('text', { x: lx, y: ly, class: 'slice-num', 'font-size': sh.frac >= 0.04 ? 10 : 7 }); tx.textContent = t.index + 1;
     }
     f = f1;
   });

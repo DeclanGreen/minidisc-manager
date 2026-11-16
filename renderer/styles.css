@@ -270,7 +270,7 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 .slice.playing { animation: pulse 1.6s infinite; }
 .slice.queued { fill: var(--warn); opacity: .75; }
 .slice.queued.over { fill: var(--danger); opacity: 1; }
-.slice-num { fill: #fff; font-size: 10px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: #0006; stroke-width: 2px; }
+.slice-num { fill: #fff; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: #0006; stroke-width: 2px; }
 .disc-hole { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
 .disc-spindle { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
 .disc-pct { fill: var(--text); font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
