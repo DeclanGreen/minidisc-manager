@@ -301,3 +301,23 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; color: 
 
 
 .discpie.wide { width: 216px; height: 172px; }
+
+/* Library tab */
+.lib-bar { display: flex; align-items: center; gap: 10px; }
+.lib-bar input { flex: 1; min-width: 0; margin: 0; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font: inherit; }
+.lib-bar input:focus { outline: none; border-color: var(--accent); }
+.lib-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.lib-list .empty { position: static; padding: 40px 12px; text-align: center; }
+.lib-card { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); flex: none; }
+.lib-card.open { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.lib-head { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; white-space: normal; border: 0; background: none; padding: 10px; }
+.lib-art { flex: none; width: 48px; height: 48px; border-radius: 6px; background: linear-gradient(145deg, var(--accent), var(--accent-2)) center / cover no-repeat; display: grid; place-items: center; color: #fff; font-size: 20px; }
+.lib-meta { min-width: 0; }
+.lib-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-note { color: var(--accent); margin-top: 2px; }
+.lib-tracks { list-style: none; margin: 0; padding: 0 12px 6px 70px; font-size: 13px; }
+.lib-tracks li { display: flex; gap: 10px; justify-content: space-between; padding: 3px 0; border-top: 1px solid var(--line); }
+.lib-tracks li:first-child { border-top: 0; }
+.lib-tracks li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-tracks li em { flex: none; font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lib-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 12px 12px 70px; }

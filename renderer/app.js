@@ -348,6 +348,11 @@ async function refresh() {
   S.disc = disc; S.lastDiscPresent = status.discPresent;
   S.sel = new Set([...S.sel].filter((i) => disc?.tracks.some((t) => t.index === i)));
   if (disc && disc.title !== S.art.title) loadDiscArt(disc.title);
+  // Remember the disc in the library (never let a library problem break reading the disc).
+  try {
+    S.libId = disc ? await window.md.libraryRecord(disc, S.libId) : null;
+    if (S.tab === 'library') drawLibrary();
+  } catch { S.libId = null; }
 }
 
 // Fetch art for the disc in the background (cached; online lookup if enabled).
@@ -366,7 +371,7 @@ async function loadDiscArt(title, opts) {
 }
 
 $('connectBtn').onclick = () => S.connected
-  ? busy('Disconnecting…', async () => { await window.md.disconnect(); S.connected = false; S.disc = null; S.sel.clear(); })
+  ? busy('Disconnecting…', async () => { await window.md.disconnect(); S.connected = false; S.disc = null; S.libId = null; S.sel.clear(); })
   : busy('Looking for player…', async () => {
     const r = await window.md.connect();
     if (!r.connected) { toast('No NetMD player found. Is it plugged in and is the WinUSB driver installed? (see README)', true); return; }
@@ -464,8 +469,10 @@ function parseCSV(text) {
   if (cell || row.length) { row.push(cell); rows.push(row); }
   return rows.filter((r) => r.some((x) => x.trim() !== ''));
 }
-$('exportBtn').onclick = async () => {
-  const d = S.disc; if (!d) return;
+$('exportBtn').onclick = () => exportDisc(S.disc);
+$('inlayBtn').onclick = () => inlayDisc(S.disc, S.art.title === S.disc?.title ? S.art.url : null);
+async function exportDisc(d) {
+  if (!d) return;
   const lines = [['Track', 'Title', 'Mode', 'Length'].join(',')];
   lines.push(['0', csvCell(d.title || ''), '', csvCell(fmt(d.totalSec))].join(','));
   d.tracks.forEach((t) => lines.push([t.index + 1, csvCell(t.title || ''), t.encoding + (t.mono ? ' mono' : ''), fmt(t.seconds)].join(',')));
@@ -473,9 +480,9 @@ $('exportBtn').onclick = async () => {
     const where = await window.md.saveText(`${(d.title || 'MiniDisc').replace(/[\\/:*?"<>|]/g, '_')}.csv`, '﻿' + lines.join('\r\n') + '\r\n');
     if (where) toast(`Saved ${d.tracks.length} track${d.tracks.length === 1 ? '' : 's'} to ${where}`);
   } catch (e) { toast(e.message, true); }
-};
-$('inlayBtn').onclick = async () => {
-  const d = S.disc; if (!d || !d.tracks.length) return;
+}
+async function inlayDisc(d, art) {
+  if (!d || !d.tracks.length) return;
   const share = trackShares(d), total = d.totalSec || 1;
   // When every title starts with the same "Artist - ", show the artist once and drop it from each line so the titles fit.
   const pre = (d.tracks[0].title || '').match(/^(.{2,40}?) [-–] /)?.[1];
@@ -483,12 +490,12 @@ $('inlayBtn').onclick = async () => {
   const shown = (t) => { const x = t.title || 'No title'; return shared ? x.replace(/^.*? [-–] /, '') : x; };
   try {
     await window.md.printInlay({ artist: shared,
-      title: d.title, art: S.art.title === d.title ? S.art.url : null,
+      title: d.title, art,
       used: fmt(d.usedSec), total: fmt(d.totalSec), usedPct: Math.round((d.usedSec / total) * 100), queuedFrac: 0,   // the card shows what is on the disc now, not the queue
       tracks: d.tracks.map((t) => ({ n: t.index + 1, title: shown(t), time: fmt(t.seconds), frac: share.get(t.index)?.frac || 0, color: share.get(t.index)?.color || '#888' })),
     });
   } catch (e) { toast(e.message, true); }
-};
+}
 $('importBtn').onclick = async () => {
   const d = S.disc; if (!d) return;
   let text;
@@ -852,7 +859,8 @@ window.md.on('device-attached', () => { if (!S.connected) $('connectBtn').click(
 function setTab(tab) {
   S.tab = tab;
   document.querySelectorAll('#tabs button').forEach((b) => { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', b.dataset.tab === tab); });
-  for (const t of ['transfer', 'lyrics', 'video', 'spotify']) $('pane' + t[0].toUpperCase() + t.slice(1)).hidden = tab !== t;
+  for (const t of ['transfer', 'lyrics', 'video', 'spotify', 'library']) $('pane' + t[0].toUpperCase() + t.slice(1)).hidden = tab !== t;
+  if (tab === 'library') drawLibrary();
   syncLyrics();
 }
 $('tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); };
@@ -1092,12 +1100,70 @@ $('spApp').onclick = () => S.sp.data?.uri && window.md.openExternal(S.sp.data.ur
 $('spWeb').onclick = () => S.sp.data && window.md.openExternal(S.sp.data.url || S.sp.data.searchUrl);
 
 // ---------- poll the player: disc insert/eject, playing track and position
+// ---------- library: discs seen in the player, browsable without the player
+const LIB = { discs: [], open: new Set(), art: new Map(), q: '' };
+const asDisc = (e) => ({ ...e, tracks: e.tracks.map((t, i) => ({ ...t, index: i })) });   // library tracks have no player index
+async function drawLibrary(reload = true) {
+  if (reload) { try { LIB.discs = await window.md.libraryList(); } catch (e) { toast(e.message, true); return; } }
+  const q = LIB.q.trim().toLowerCase();
+  const shown = LIB.discs.filter((e) => !q || [e.title, e.note, ...e.tracks.map((t) => t.title)].some((s) => (s || '').toLowerCase().includes(q)));
+  $('libCount').textContent = LIB.discs.length ? `${shown.length} of ${LIB.discs.length} disc${LIB.discs.length === 1 ? '' : 's'}` : '';
+  const list = $('libList');
+  list.textContent = '';
+  if (!shown.length) {
+    const m = document.createElement('div'); m.className = 'empty';
+    m.textContent = LIB.discs.length ? 'No disc or track matches that search.' : 'No discs yet. Each disc you read in the player is remembered here.';
+    list.append(m); return;
+  }
+  for (const e of shown) {
+    const card = document.createElement('div'); card.className = 'lib-card' + (LIB.open.has(e.id) ? ' open' : '');
+    const head = document.createElement('button'); head.type = 'button'; head.className = 'lib-head';
+    const art = document.createElement('div'); art.className = 'lib-art'; art.textContent = '♪';
+    const meta = document.createElement('div'); meta.className = 'lib-meta';
+    const t = document.createElement('div'); t.className = 'lib-title'; t.textContent = e.title || 'Untitled disc';
+    const sub = document.createElement('div'); sub.className = 'muted small';
+    const when = new Date(e.lastSeen).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    sub.textContent = `${e.tracks.length} track${e.tracks.length === 1 ? '' : 's'} · ${fmt(e.usedSec)} of ${fmt(e.totalSec)} · ${e.id === S.libId ? 'in the player now' : 'last seen ' + when}`;
+    meta.append(t, sub);
+    if (e.note) { const n = document.createElement('div'); n.className = 'lib-note small'; n.textContent = e.note; meta.append(n); }
+    head.append(art, meta);
+    head.onclick = () => { LIB.open.has(e.id) ? LIB.open.delete(e.id) : LIB.open.add(e.id); drawLibrary(false); };
+    card.append(head);
+    libArt(e.title).then((url) => { if (url) { art.textContent = ''; art.style.backgroundImage = `url("${url}")`; } });
+    if (LIB.open.has(e.id)) {
+      const ol = document.createElement('ol'); ol.className = 'lib-tracks';
+      for (const tr of e.tracks) {
+        const li = document.createElement('li');
+        const nm = document.createElement('span'); nm.textContent = tr.title || 'No title';
+        const tm = document.createElement('em'); tm.textContent = fmt(tr.seconds) + (tr.encoding !== 'SP' ? ' ' + tr.encoding : '');
+        li.append(nm, tm); ol.append(li);
+      }
+      if (!e.tracks.length) { const li = document.createElement('li'); li.className = 'muted'; li.textContent = 'This disc was empty.'; ol.append(li); }
+      const row = document.createElement('div'); row.className = 'lib-actions';
+      const btn = (label, fn, cls = 'ghost small-btn') => { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label; b.onclick = fn; row.append(b); };
+      btn('Print inlay…', async () => inlayDisc(asDisc(e), await libArt(e.title)));
+      btn('Export list…', () => exportDisc(asDisc(e)));
+      btn(e.note ? 'Edit note…' : 'Add note…', () => openRename('Note for this disc (e.g. which case or shelf)', e.note || '', async (v) => { await window.md.libraryNote(e.id, v); drawLibrary(); }));
+      btn('Remove from library', async () => { await window.md.libraryRemove(e.id); LIB.open.delete(e.id); if (S.libId === e.id) S.libId = null; drawLibrary(); }, 'danger small-btn');
+      card.append(ol, row);
+    }
+    list.append(card);
+  }
+}
+// Cover art for the library, from the local cache only (so opening the tab never fires off a lookup for every disc).
+function libArt(title) {
+  if (!title || !title.trim()) return Promise.resolve(null);
+  if (!LIB.art.has(title)) LIB.art.set(title, window.md.getArt(title, { cacheOnly: true }).then((r) => r?.url || null).catch(() => null));
+  return LIB.art.get(title);
+}
+$('libSearch').oninput = (e) => { LIB.q = e.target.value; drawLibrary(false); };
+
 async function poll() {
   let delay = 3000;
   if (S.connected && !S.busy && !S.uploading && !document.querySelector('dialog[open]')) {
     try {
       const st = await window.md.status();
-      if (st.discPresent !== S.lastDiscPresent) { await busy(st.discPresent ? 'Reading disc…' : 'Disc ejected', refresh); }
+      if (st.discPresent !== S.lastDiscPresent) { S.libId = null; await busy(st.discPresent ? 'Reading disc…' : 'Disc ejected', refresh); }
       else {
         const playingTrack = st.state === 'playing' || st.state === 'paused' ? st.track : null;
         if (st.track != null && st.time) {

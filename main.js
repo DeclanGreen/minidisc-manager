@@ -290,7 +290,7 @@ async function getArt(title, opts = {}) {
     if (hit.cleared) return null;
     if (hit.none && Date.now() - hit.ts < 7 * 864e5) return null;
   }
-  if (!opts.force && !loadSettings().onlineArt) return null;
+  if (!opts.force && (opts.cacheOnly || !loadSettings().onlineArt)) return null;
   const q = opts.album !== undefined ? { artist: opts.artist || '', album: opts.album } : splitTitle(title);
   const res = await searchArt(q.artist, q.album);
   if (!res) {
@@ -502,6 +502,53 @@ handle('open-text', async () => {
   const st = fs.statSync(r.filePaths[0]);
   if (st.size > 1024 * 1024) throw new Error('That file is too big to be a track list.');
   return fs.readFileSync(r.filePaths[0], 'utf8');
+});
+
+// ---------- disc library: every disc seen in the player is remembered, so it can be browsed without the disc or player
+const LIBRARY_FILE = () => path.join(app.getPath('userData'), 'library.json');
+let library = null;
+function libraryData() {
+  if (!library) { try { library = JSON.parse(fs.readFileSync(LIBRARY_FILE(), 'utf8')); } catch { library = {}; } }
+  if (!Array.isArray(library.discs)) library.discs = [];
+  return library;
+}
+function saveLibrary() {
+  const tmp = LIBRARY_FILE() + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(library, null, 1));
+  fs.renameSync(tmp, LIBRARY_FILE());
+}
+const trackSig = (t) => `${t.title}|${Math.round(t.seconds)}|${t.encoding}|${t.mono ? 1 : 0}`;
+const discSig = (title, tracks) => crypto.createHash('sha1').update(title + '\n' + tracks.map(trackSig).join('\n')).digest('hex');
+// Record the disc just read. Discs have no ID of their own, so: identical contents -> same entry; otherwise, if the app itself just
+// edited the disc (prevId) and most of its tracks are still there, update that entry; otherwise it is a new disc.
+function recordDisc(d, prevId) {
+  if (!d || (!d.title.trim() && !d.tracks.length)) return null;   // blank disc: nothing worth remembering
+  const lib = libraryData(), now = Date.now();
+  const tracks = d.tracks.map((t) => ({ title: t.title, seconds: t.seconds, encoding: t.encoding, mono: !!t.mono }));
+  const sig = discSig(d.title, tracks);
+  let e = lib.discs.find((x) => x.sig === sig);
+  if (!e && prevId) {
+    const prev = lib.discs.find((x) => x.id === prevId);
+    if (prev) {
+      const old = new Map();
+      for (const t of prev.tracks) { const k = Math.round(t.seconds); old.set(k, (old.get(k) || 0) + 1); }
+      let same = 0;
+      for (const t of tracks) { const k = Math.round(t.seconds); if (old.get(k) > 0) { same++; old.set(k, old.get(k) - 1); } }
+      if (!prev.tracks.length || same * 2 >= prev.tracks.length) e = prev;
+    }
+  }
+  if (!e) { e = { id: crypto.randomUUID(), firstSeen: now, note: '' }; lib.discs.push(e); }
+  Object.assign(e, { sig, title: d.title, tracks, usedSec: d.usedSec, totalSec: d.totalSec, lastSeen: now });
+  saveLibrary();
+  return e.id;
+}
+handle('library-record', (d, prevId) => recordDisc(d, prevId));
+handle('library-list', () => [...libraryData().discs].sort((a, b) => b.lastSeen - a.lastSeen));
+handle('library-remove', (id) => { const lib = libraryData(); lib.discs = lib.discs.filter((x) => x.id !== id); saveLibrary(); return true; });
+handle('library-note', (id, note) => {
+  const e = libraryData().discs.find((x) => x.id === id);
+  if (e) { e.note = String(note || '').slice(0, 200); saveLibrary(); }
+  return true;
 });
 
 handle('get-art', (title, opts) => getArt(title, opts));

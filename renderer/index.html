@@ -86,6 +86,15 @@
         <button role="tab" data-tab="lyrics" aria-selected="false">Lyrics <span class="live-dot" id="liveDot" hidden></span></button>
         <button role="tab" data-tab="video" aria-selected="false">Video</button>
         <button role="tab" data-tab="spotify" aria-selected="false">Spotify</button>
+        <button role="tab" data-tab="library" aria-selected="false">Library</button>
+      </div>
+
+      <div class="tab-pane" id="paneLibrary" role="tabpanel" hidden>
+        <div class="lib-bar">
+          <input type="search" id="libSearch" placeholder="Search discs and tracks…" aria-label="Search the library">
+          <span class="muted small" id="libCount"></span>
+        </div>
+        <div class="lib-list" id="libList"></div>
       </div>
 
       <div class="tab-pane" id="paneVideo" role="tabpanel" hidden>
