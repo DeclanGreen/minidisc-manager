@@ -551,6 +551,31 @@ handle('library-note', (id, note) => {
   return true;
 });
 
+// Save the whole library: CSV (one row per track, opens in Excel) or JSON (a full copy of library.json). The file extension picks the format.
+handle('library-export', async () => {
+  const discs = [...libraryData().discs].sort((a, b) => a.title.localeCompare(b.title));
+  if (!discs.length) throw new Error('The library is empty.');
+  const r = await dialog.showSaveDialog(win, { title: 'Export library', defaultPath: path.join(app.getPath('documents'), 'RetroDisc library.csv'),
+    filters: [{ name: 'CSV (spreadsheet)', extensions: ['csv'] }, { name: 'JSON (full backup)', extensions: ['json'] }] });
+  if (r.canceled || !r.filePath) return null;
+  let out;
+  if (/\.json$/i.test(r.filePath)) out = JSON.stringify(libraryData(), null, 1);
+  else {
+    const cell = (v) => (/[",\r\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const mmss = (s) => { s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+    const rows = [['Disc', 'Note', 'Last seen', 'Track', 'Title', 'Mode', 'Length']];
+    for (const d of discs) {
+      const seen = new Date(d.lastSeen).toISOString().slice(0, 10);
+      if (!d.tracks.length) rows.push([d.title, d.note, seen, '', '', '', '']);
+      d.tracks.forEach((t, i) => rows.push([d.title, d.note, seen, i + 1, t.title, t.encoding + (t.mono ? ' mono' : ''), mmss(t.seconds)]));
+    }
+    out = '﻿' + rows.map((row) => row.map(cell).join(',')).join('\r\n') + '\r\n';
+  }
+  fs.writeFileSync(r.filePath, out, 'utf8');
+  log(`Exported library (${discs.length} discs) to ${r.filePath}`);
+  return { path: r.filePath, count: discs.length };
+});
+
 handle('get-art', (title, opts) => getArt(title, opts));
 handle('choose-art', async (title) => {
   const r = await dialog.showOpenDialog(win, { title: 'Choose cover image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }] });

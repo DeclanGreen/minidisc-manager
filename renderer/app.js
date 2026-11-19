@@ -1156,6 +1156,10 @@ function libArt(title) {
   if (!LIB.art.has(title)) LIB.art.set(title, window.md.getArt(title, { cacheOnly: true }).then((r) => r?.url || null).catch(() => null));
   return LIB.art.get(title);
 }
+$('libExport').onclick = async () => {
+  try { const r = await window.md.libraryExport(); if (r) toast(`Saved ${r.count} disc${r.count === 1 ? '' : 's'} to ${r.path}`); }
+  catch (e) { toast(e.message, true); }
+};
 $('libSearch').oninput = (e) => { LIB.q = e.target.value; drawLibrary(false); };
 
 async function poll() {
