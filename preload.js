@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('md', {
   libraryRecord: (d, prevId) => call('library-record', d, prevId),
   libraryList: () => call('library-list'),
   libraryRemove: (id) => call('library-remove', id),
+  libraryImport: () => call('library-import'),
   libraryExport: () => call('library-export'),
   libraryNote: (id, note) => call('library-note', id, note),
   getArt: (title, opts) => call('get-art', title, opts),

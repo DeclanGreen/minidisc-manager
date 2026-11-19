@@ -576,6 +576,44 @@ handle('library-export', async () => {
   return { path: r.filePath, count: discs.length };
 });
 
+// Merge a JSON backup (made by "Export all…") into the library. Additive: nothing is deleted, and a disc already here is only
+// replaced if the backup saw it more recently. The file is validated and rebuilt field by field, never trusted as-is.
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+function cleanDisc(x) {
+  if (!x || typeof x !== 'object' || typeof x.title !== 'string' || !Array.isArray(x.tracks) || x.tracks.length > 999) return null;
+  const tracks = [];
+  for (const t of x.tracks) {
+    if (!t || typeof t.title !== 'string' || !isNum(t.seconds) || t.seconds < 0) return null;
+    tracks.push({ title: t.title.slice(0, 300), seconds: t.seconds, encoding: ['SP', 'LP2', 'LP4'].includes(t.encoding) ? t.encoding : '?', mono: !!t.mono });
+  }
+  const title = x.title.slice(0, 300);
+  return { id: typeof x.id === 'string' && /^[0-9a-f-]{36}$/i.test(x.id) ? x.id : crypto.randomUUID(), title, tracks,
+    usedSec: isNum(x.usedSec) ? x.usedSec : 0, totalSec: isNum(x.totalSec) ? x.totalSec : 0,
+    firstSeen: isNum(x.firstSeen) ? x.firstSeen : Date.now(), lastSeen: isNum(x.lastSeen) ? x.lastSeen : Date.now(),
+    note: typeof x.note === 'string' ? x.note.slice(0, 200) : '', sig: discSig(title, tracks) };
+}
+handle('library-import', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Import library', properties: ['openFile'], filters: [{ name: 'RetroDisc library backup (JSON)', extensions: ['json'] }] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  if (fs.statSync(r.filePaths[0]).size > 20 * 1024 * 1024) throw new Error('That file is too big to be a library backup.');
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8')); } catch { throw new Error("That isn't a valid JSON file."); }
+  if (!raw || !Array.isArray(raw.discs)) throw new Error("That file isn't a RetroDisc library backup. Use a JSON file made by Export all….");
+  const lib = libraryData();
+  let added = 0, updated = 0, same = 0, skipped = 0;
+  for (const x of raw.discs) {
+    const d = cleanDisc(x);
+    if (!d) { skipped++; continue; }
+    const have = lib.discs.find((e) => e.sig === d.sig || e.id === d.id);
+    if (!have) { lib.discs.push(d); added++; }
+    else if (d.lastSeen > have.lastSeen) { Object.assign(have, { title: d.title, tracks: d.tracks, sig: d.sig, usedSec: d.usedSec, totalSec: d.totalSec, lastSeen: d.lastSeen }); if (!have.note) have.note = d.note; updated++; }
+    else { if (!have.note && d.note) have.note = d.note; same++; }
+  }
+  if (added || updated || same) saveLibrary();
+  log(`Imported library from ${r.filePaths[0]}: ${added} added, ${updated} updated, ${same} already there, ${skipped} skipped`);
+  return { added, updated, same, skipped };
+});
+
 handle('get-art', (title, opts) => getArt(title, opts));
 handle('choose-art', async (title) => {
   const r = await dialog.showOpenDialog(win, { title: 'Choose cover image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }] });

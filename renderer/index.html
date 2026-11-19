@@ -91,8 +91,9 @@
 
       <div class="tab-pane" id="paneLibrary" role="tabpanel" hidden>
         <div class="lib-bar">
-          <input type="search" id="libSearch" placeholder="Search discs and tracks…" aria-label="Search the library">
+          <input type="search" id="libSearch" placeholder="Search…" aria-label="Search the library">
           <span class="muted small" id="libCount"></span>
+          <button type="button" class="ghost small-btn" id="libImport" title="Add the discs from a JSON backup made by Export all. Nothing in the library is deleted.">Import…</button>
           <button type="button" class="ghost small-btn" id="libExport" title="Save every disc in the library to one file: CSV for a spreadsheet, or JSON as a full backup">Export all…</button>
         </div>
         <div class="lib-list" id="libList"></div>

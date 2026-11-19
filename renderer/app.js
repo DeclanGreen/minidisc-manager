@@ -1160,6 +1160,14 @@ $('libExport').onclick = async () => {
   try { const r = await window.md.libraryExport(); if (r) toast(`Saved ${r.count} disc${r.count === 1 ? '' : 's'} to ${r.path}`); }
   catch (e) { toast(e.message, true); }
 };
+$('libImport').onclick = async () => {
+  try {
+    const r = await window.md.libraryImport(); if (!r) return;
+    const bits = [`${r.added} added`, r.updated && `${r.updated} updated`, r.same && `${r.same} already there`, r.skipped && `${r.skipped} unreadable skipped`].filter(Boolean);
+    toast(`Imported: ${bits.join(', ')}`);
+    drawLibrary();
+  } catch (e) { toast(e.message, true); }
+};
 $('libSearch').oninput = (e) => { LIB.q = e.target.value; drawLibrary(false); };
 
 async function poll() {
