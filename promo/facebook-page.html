@@ -94,6 +94,18 @@ section { padding-block: 44px; border-top: 1px solid var(--line); }
 .models { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .models span { font: .95rem var(--f-lcd); padding: 6px 10px; background: var(--lcd-bg); color: var(--lcd-fg); border-radius: 3px; letter-spacing: .05em; }
 
+/* screenshots */
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.shot { margin: 0; min-width: 0; display: grid; gap: 10px; align-content: start; }
+.shot.wide { grid-column: 1 / -1; }
+.shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.shot figcaption { color: var(--muted); font-size: .95rem; max-width: 62ch; }
+.shot figcaption b { color: var(--fg); font-weight: 600; }
+.demo-note { margin-top: 18px; color: var(--muted); font-size: .88rem; }
+.attach { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: .95rem; color: var(--muted); }
+.attach code { font: .9rem var(--f-lcd); color: var(--fg); user-select: all; }
+.path { font: .9rem var(--f-lcd); color: var(--fg); user-select: all; overflow-wrap: anywhere; }
+
 /* post */
 .post { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 20px; display: grid; gap: 14px; }
 .post pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font: .95rem/1.6 var(--f-body); color: var(--fg); user-select: all; }
@@ -102,6 +114,7 @@ button.copy:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
 footer { padding-block: 30px 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
 
 @media (max-width: 860px) {
+  .shots { grid-template-columns: 1fr; }
   .hero { grid-template-columns: 1fr; padding-block: 36px 32px; }
   .grid { grid-template-columns: 1fr 1fr; }
   .two { grid-template-columns: 1fr; }
@@ -154,11 +167,47 @@ footer { padding-block: 30px 44px; border-top: 1px solid var(--line); color: var
 
   <section>
     <div class="sec-head">
+      <div class="eyebrow">In the app</div>
+      <h2>See your discs, hear them, print them</h2>
+      <p>Five screens from the app, taken with a made-up demo disc.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot wide">
+        <img src="screens/01-main-vinyl.png" width="1587" height="982" alt="RetroDisc showing a 12-track disc as a black vinyl record with a tonearm, a track list with each track's share of the disc, and six songs queued in LP2 mode">
+        <figcaption><b>Your disc as a record.</b> The tonearm lands on the track that is playing and creeps along as it plays. The bar shows what is used, what is queued and what is free, and LP2 doubles the room.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="screens/02-minidisc-pie.png" width="1587" height="982" alt="The same disc drawn as a MiniDisc pie chart, one coloured slice per track, with the third track selected">
+        <figcaption><b>Or the MiniDisc look.</b> Every slice is a track, sized by the space it takes on the disc. Click a slice to pick the track.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="screens/03-lyrics.png" width="1587" height="982" alt="The Lyrics tab showing synced lyrics for the playing track, with the current line in bold">
+        <figcaption><b>Synced lyrics.</b> The current line is highlighted and scrolls along while the MiniDisc plays.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="screens/04-library.png" width="1587" height="982" alt="The Library tab listing five discs with cover art, one disc open to show its tracks and a note reading Blue case, shelf B">
+        <figcaption><b>A library of every disc.</b> Each disc you read is remembered, so you can search your whole collection with no disc in the player. Add a note to say which case it lives in.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="screens/05-inlay.png" width="1133" height="700" alt="A printable inlay card with the album cover, a pie chart, a numbered track list with times, and a spine strip">
+        <figcaption><b>Print an inlay.</b> A cover card, a numbered track list with times, and a spine strip, ready to cut out for the case.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
       <div class="eyebrow">What it does</div>
       <h2>Everything for your MiniDisc, in one window</h2>
       <p>Plug in the player over USB, click Connect, and the disc appears with its title, tracks and a capacity bar.</p>
     </div>
     <div class="grid">
+      <div class="feat"><h3>Disc pie chart</h3><p>See how much of the disc each track takes. LP2, LP4 and mono tracks count for less space, and every track also shows its share in the list.</p></div>
+      <div class="feat"><h3>Vinyl record and tonearm</h3><p>Switch the chart to a black record that turns at 33 1/3 rpm while a track plays. The tonearm lands on the playing track and creeps inward.</p></div>
+      <div class="feat"><h3>Play the track you pick</h3><p>Select a track and press Play, and the player starts that track. Pause, stop, next and previous work too, with the playing track highlighted.</p></div>
+      <div class="feat"><h3>Print a case inlay</h3><p>A printable card with the cover art, the pie chart, a numbered track list with times and a spine strip. Print it, or save it as a PDF.</p></div>
+      <div class="feat"><h3>Disc library</h3><p>Every disc you read is remembered with its tracks, lengths and cover. Search the collection without the disc, and add a note such as "blue case, shelf B".</p></div>
+      <div class="feat"><h3>Library backup</h3><p>Export the whole library to a spreadsheet-friendly CSV or a JSON backup, and import the backup again on a new PC. Importing only adds, it never deletes.</p></div>
       <div class="feat"><h3>Read your discs</h3><p>See the disc title, every track, its recording mode (SP, LP2 or LP4) and length, plus how much space is left.</p></div>
       <div class="feat"><h3>Copy music to disc</h3><p>Drag in MP3, FLAC, WAV, M4A or OGG files. They convert automatically and record in SP, LP2 or LP4. Track names come from the file tags.</p></div>
       <div class="feat"><h3>Folders and playlists</h3><p>Drop a whole folder, or an M3U or PLS playlist, and every track is queued in order. Missing files and web streams are skipped.</p></div>
@@ -218,19 +267,23 @@ footer { padding-block: 30px 44px; border-top: 1px solid var(--line); color: var
     <div class="sec-head">
       <div class="eyebrow">Ready to post</div>
       <h2>Facebook post</h2>
-      <p>Copy this and paste it into a new post. The download link is already in it.</p>
+      <p>Copy this and paste it into a new post, then attach the screenshots listed below it. The download link is already in the text.</p>
     </div>
+    <p class="notice" style="margin: 0 0 14px;">Before you post: the disc library and its export and import are not in the downloadable v0.5.1 yet. Publish the next release first, or delete the two library lines from the post.</p>
     <div class="post">
       <pre id="postText">💿 RetroDisc: a free app for your Sony NetMD MiniDisc player
 
-Put your music on MiniDisc from your computer. Plug the player in over USB and you can:
+Put your music on MiniDisc from your computer, and see your discs the way they deserve. Plug the player in over USB and you can:
 
-• Read the disc: title, tracks, SP/LP2/LP4 mode, space left
-• Copy MP3s, FLAC and more to disc, in SP, LP2 or LP4
+• See each disc as a pie chart of the space every track takes, or switch to a black vinyl record that spins while a track plays, with a tonearm that follows the music
+• Pick a track and press Play to start it
+• Copy MP3s, FLAC and more to disc in SP, LP2 or LP4, with a live capacity bar and a Fit to disc button
 • Drop in a whole folder or playlist
 • Tidy, sort and number track titles in one click
-• Export the track list to CSV, edit it, and import the names back
 • Rename, reorder, delete and erase tracks
+• Export the track list to CSV, edit it, and import the names back
+• Print an inlay card for the case: cover art, track list with times, and the pie chart
+• Keep a library of every disc you read: search it without the disc, add notes like "blue case, shelf B", and back it up or restore it
 • Album art, synced lyrics, music videos and a Spotify tab
 • Import straight from an audio CD (Windows)
 
@@ -241,6 +294,19 @@ Download (Windows and Mac): https://github.com/DeclanGreen/retrodisc/releases/la
 #MiniDisc #NetMD #Sony #RetroTech #Walkman</pre>
       <button class="copy" id="copyBtn" type="button">Copy post text</button>
     </div>
+    <div class="sec-head" style="margin: 26px 0 0;">
+      <h3>Screenshots to attach</h3>
+      <p>The images are saved on your PC in this folder. Add them to the post in this order, so the record comes first.</p>
+      <p class="path">C:\Users\decky\Documents\minidisc-manager\promo\screens</p>
+    </div>
+    <ol class="attach">
+      <li><code>01-main-vinyl.png</code> (the record and tonearm)</li>
+      <li><code>02-minidisc-pie.png</code> (the MiniDisc pie chart)</li>
+      <li><code>03-lyrics.png</code> (synced lyrics)</li>
+      <li><code>04-library.png</code> (the disc library)</li>
+      <li><code>05-inlay.png</code> (the printable inlay)</li>
+    </ol>
+    <p class="demo-note">The screenshots use a made-up disc and band names, so no real music or personal data is shown.</p>
   </section>
 
   <footer>
